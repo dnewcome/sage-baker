@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.sagemaker/
+.sm-scratch/
+.sb-test/
+output/
+model/
+data/*.csv

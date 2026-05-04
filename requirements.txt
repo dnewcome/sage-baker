@@ -1,0 +1,5 @@
+sagemaker>=2.230,<3
+boto3
+docker
+scikit-learn
+pandas
