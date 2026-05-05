@@ -1,28 +1,37 @@
 # sage-baker
 
-Local SageMaker training sandbox using **SageMaker Local Mode** with a
-**bring-your-own-container (BYOC)** image. Runs entirely on the local Docker
-daemon — no AWS account, no ECR pulls, no cloud resources.
+Local SageMaker training sandbox using **SageMaker Local Mode**, with two
+interchangeable paths: a **bring-your-own-container (BYOC)** image for fully
+offline use, and the **AWS Deep Learning Container (DLC)** image for
+production-parity workflows.
 
 ## What this is
 
 SageMaker has a "Local Mode" where the SDK runs training/inference jobs in
 Docker containers on your machine using the same `/opt/ml/...` directory
-contracts as real SageMaker. By default it pulls AWS Deep Learning Container
-(DLC) images from a regional ECR registry, which requires real AWS credentials.
+contracts as real SageMaker. By default it pulls Deep Learning Container
+(DLC) images from a regional ECR registry, which requires real AWS credentials
+(any account works — the images are public-read, but ECR still demands a real
+auth token to issue the pull).
 
-This project skips ECR entirely by building a small local image and pointing
-the SDK at it via `image_uri=`. The container follows the
-"algorithm container" contract: a `train` command on `PATH` that reads its
-inputs from `/opt/ml/input/` and writes the model to `/opt/ml/model/`.
+This project supports both:
+
+- **BYOC** (`local_train.py`) — small local image, follows the algorithm
+  container contract (a `train` command on `PATH` reading `/opt/ml/input/`
+  and writing `/opt/ml/model/`). Fully offline. No AWS account needed.
+- **DLC** (`local_train_dlc.py`) — official AWS scikit-learn DLC image.
+  Requires real AWS creds for the initial ECR pull; runs locally after that.
+  Uses the `entry_point` + `source_dir` flow, so edits to `train.py` don't
+  require any rebuild.
 
 ## Repo layout
 
 ```
-Dockerfile          minimal Python + scikit-learn image with a `train` command
-train.py            training script — runs inside the container
+Dockerfile          minimal Python + scikit-learn image with a `train` command (BYOC)
+train.py            training script — works in both BYOC and DLC modes
 prepare_data.py     writes data/iris.csv (toy dataset)
-local_train.py      driver: builds an Estimator in Local Mode and calls fit()
+local_train.py      BYOC driver — uses the local image, no AWS account
+local_train_dlc.py  DLC driver  — uses the AWS scikit-learn DLC image
 local_serve.py      placeholder — does not work yet (see "Serving", below)
 requirements.txt    sagemaker<3, boto3, scikit-learn, pandas, docker
 ```
@@ -47,13 +56,30 @@ python3 -m venv .venv
 
 ## Running training
 
+Generate the toy dataset once:
+
+```bash
+.venv/bin/python prepare_data.py
+```
+
+### BYOC (offline)
+
 ```bash
 docker build -t sage-baker-sklearn:latest .
-.venv/bin/python prepare_data.py
 .venv/bin/python local_train.py
 ```
 
-Expected tail of output:
+### DLC (with AWS credentials)
+
+```bash
+export AWS_PROFILE=your-profile     # or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY
+.venv/bin/python local_train_dlc.py
+```
+
+The DLC image (~3 GB) is pulled once and cached in your local Docker daemon;
+subsequent runs are offline.
+
+Both paths produce the same shape of output:
 
 ```
 algo-1-XXXX  | validation_accuracy=1.0000
@@ -63,6 +89,21 @@ model artifact: file:///.../sage-baker/.sm-scratch/.../compressed_artifacts/mode
 
 The model artifact (`model.tar.gz` containing `model.joblib`) lives under
 `.sm-scratch/`.
+
+## When to use which
+
+| Use BYOC when …                              | Use DLC when …                              |
+| -------------------------------------------- | ------------------------------------------- |
+| no AWS credentials available                 | you have any AWS account                    |
+| you want a small (~200 MB) image             | image size doesn't matter                   |
+| deps are simple (sklearn / pandas / etc.)    | you want AWS-tested framework + GPU stack   |
+| training script is stable                    | you want to iterate on `train.py` fast      |
+| serving doesn't matter                       | you want `/ping` + `/invocations` for free  |
+
+The big practical wins of DLC are the `entry_point` flow (no rebuilds on
+script edits) and the inference toolkit (working serving in one `.deploy()`
+call). BYOC's wins are zero AWS dependency and a small, fully-controlled
+image.
 
 ## Hyperparameters
 
