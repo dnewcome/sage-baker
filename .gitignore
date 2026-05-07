@@ -25,3 +25,15 @@ mlruns/
 # Feast: source files are tracked, generated state is not.
 feature_repo/data/*.parquet
 feature_repo/data/*.db
+
+# Credentials / secrets — never commit
+*-key.json
+*-credentials.json
+service-account*.json
+gcp-*.json
+gen-lang-client-*.json
+client_secret_*.json
+secrets/
+.secrets/
+.env
+.env.local
