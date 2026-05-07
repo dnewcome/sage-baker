@@ -1,5 +1,11 @@
 .DEFAULT_GOAL := help
 
+# Load .env if present (gitignored; .env.example is the template). The
+# `-include` makes it optional, and `export` pushes all loaded vars to
+# every sub-shell so trainers / prepare scripts pick them up.
+-include .env
+export
+
 VENV := .venv
 PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip

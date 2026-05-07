@@ -726,13 +726,22 @@ you can search/filter runs by dataset hash in the MLflow UI too.
 ### BigQuery specifically
 
 ```bash
-.venv/bin/pip install -r requirements-bigquery.txt
-gcloud auth application-default login
+make install-bigquery
 
-# default query hits a public dataset (iris); replace with your own
-.venv/bin/python prepare_bigquery.py --project your-gcp-project
-.venv/bin/python src/train.py --train ./data --model-dir ./model_bq
+# auth: either gcloud ADC, or a service-account key via .env (see below)
+gcloud auth application-default login   # one option
+# - or -
+cp .env.example .env                    # then edit GOOGLE_APPLICATION_CREDENTIALS
+
+# default query hits a public dataset (iris); edit prepare_bigquery.py for yours
+make data-bigquery
+make train MODEL_DIR=./model_bq
 ```
+
+The Makefile auto-loads `.env` (gitignored) and exports its variables
+to all sub-shells, so once `GOOGLE_APPLICATION_CREDENTIALS` is in
+`.env`, every BQ-using target picks it up without further work.
+`.env.example` is the committed template.
 
 To reproduce a past training run later: re-run the recorded
 `metadata.data_lineage.query` with `FOR SYSTEM_TIME AS OF
