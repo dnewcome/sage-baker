@@ -28,13 +28,21 @@ This project supports both:
 
 ```
 Dockerfile          minimal Python + scikit-learn image with a `train` command (BYOC)
-train.py            training script — works in both BYOC and DLC modes
+src/train.py        training script — works in both BYOC and DLC modes
 prepare_data.py     writes data/iris.csv (toy dataset)
 local_train.py      BYOC driver — uses the local image, no AWS account
 local_train_dlc.py  DLC driver  — uses the AWS scikit-learn DLC image
 local_serve.py      placeholder — does not work yet (see "Serving", below)
 requirements.txt    sagemaker<3, boto3, scikit-learn, pandas, docker
 ```
+
+The training script lives in `src/` so the DLC's `source_dir` can point at a
+clean directory containing only training code. SageMaker auto-`pip install`s
+any `requirements.txt` inside `source_dir`; if the project's outer
+`requirements.txt` (sagemaker, boto3, etc.) leaks into the container it
+upgrades numpy and binary-incompatibilizes the pre-installed sklearn/pandas.
+Don't put a `requirements.txt` inside `src/` unless you genuinely need extra
+deps in the training container.
 
 The training script follows SageMaker conventions:
 

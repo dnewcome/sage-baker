@@ -8,7 +8,7 @@ RUN pip install --no-cache-dir \
         pandas==2.2.2 \
         joblib==1.4.2
 
-COPY train.py /opt/ml/code/train.py
+COPY src/train.py /opt/ml/code/train.py
 
 # SageMaker invokes the container with the command `train`.
 RUN printf '#!/bin/sh\nexec python /opt/ml/code/train.py "$@"\n' > /usr/local/bin/train \

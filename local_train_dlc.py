@@ -19,16 +19,18 @@ Benefits over the BYOC path:
     endpoint with no extra container work
 """
 import os
+import boto3
 from sagemaker.local import LocalSession
 from sagemaker.sklearn.estimator import SKLearn
 
-if not (os.environ.get("AWS_PROFILE") or os.environ.get("AWS_ACCESS_KEY_ID")):
+os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
+
+if boto3.Session().get_credentials() is None:
     raise SystemExit(
         "Real AWS credentials required for DLC pulls.\n"
-        "Recommended: aws sso login --profile <name> && export AWS_PROFILE=<name>\n"
-        "Or set AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY directly."
+        "Run `aws configure` (access key) or `aws sso login --profile <name>`\n"
+        "and ensure AWS_PROFILE points at the right profile if not [default]."
     )
-os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 
 # Snap-confined Docker can't bind-mount /tmp paths.
 SCRATCH = os.path.abspath(".sm-scratch")
@@ -40,7 +42,7 @@ session.config = {"local": {"local_code": True, "container_root": SCRATCH}}
 
 estimator = SKLearn(
     entry_point="train.py",
-    source_dir=".",
+    source_dir="src",  # must NOT contain a requirements.txt — see README
     role="arn:aws:iam::000000000000:role/SageMakerRole",  # ignored locally
     instance_type="local",
     instance_count=1,
