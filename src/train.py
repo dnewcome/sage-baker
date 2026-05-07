@@ -40,17 +40,21 @@ def main():
     parser.add_argument("--train", type=str, default=os.environ.get("SM_CHANNEL_TRAIN", "/opt/ml/input/data/train"))
     args, _ = parser.parse_known_args()
 
-    csvs = sorted(glob.glob(os.path.join(args.train, "*.csv")))
-    if not csvs:
-        raise SystemExit(f"no CSV file found in {args.train}")
-    df = pd.read_csv(csvs[0])
-    print(f"loaded {csvs[0]}: {len(df)} rows, {len(df.columns)} columns")
-    X = df.drop(columns=["target"])
+    files = sorted(glob.glob(os.path.join(args.train, "*.csv"))
+                   + glob.glob(os.path.join(args.train, "*.parquet")))
+    if not files:
+        raise SystemExit(f"no .csv or .parquet file found in {args.train}")
+    path = files[0]
+    df = pd.read_parquet(path) if path.endswith(".parquet") else pd.read_csv(path)
+    print(f"loaded {path}: {len(df)} rows, {len(df.columns)} columns")
+    # drop bookkeeping columns Feast adds (entity + timestamp) if present
+    feature_cols = [c for c in df.columns if c not in {"target", "signal_id", "event_timestamp"}]
+    X = df[feature_cols]
     y = df["target"]
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
     run_params = {"n-estimators": args.n_estimators, "max-depth": args.max_depth,
-                  "dataset_file": os.path.basename(csvs[0])}
+                  "dataset_file": os.path.basename(path)}
     with tracking.mlflow_run(run_name="sklearn-rf", params=run_params,
                              tags={"framework": "sklearn"}):
         clf = RandomForestClassifier(n_estimators=args.n_estimators,
@@ -85,7 +89,7 @@ def main():
             "validation_accuracy": acc,
             "n_train": len(X_train),
             "n_test": len(X_test),
-            "dataset_file": os.path.basename(csvs[0]),
+            "dataset_file": os.path.basename(path),
         })
 
         # log the bundle as opaque MLflow artifacts (no-op if disabled).

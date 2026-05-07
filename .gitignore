@@ -8,6 +8,7 @@ output/
 model/
 model_torch/
 model_feast/
+materialized/
 data/*.csv
 mlflow.db
 mlartifacts/

@@ -38,6 +38,7 @@ prepare_data.py        writes data/iris.csv (toy multiclass dataset)
 prepare_sonar.py       writes data/sonar.csv + Feast parquets (Sonar Rocks vs Mines)
 local_train.py         BYOC driver — uses the local image, no AWS account
 local_train_dlc.py     DLC driver  — uses the AWS scikit-learn DLC image
+local_train_feast_dlc.py DLC + Feast — host-side feature retrieval, container trains
 local_serve.py         placeholder — does not work yet (see "Serving", below)
 requirements.txt       sagemaker<3, boto3, mlflow, scikit-learn, pandas, docker
 requirements-torch.txt opt-in extras for the torch example: torch, safetensors
@@ -378,6 +379,33 @@ You can keep importing CSVs from Kaggle (`prepare_sonar.py` still pulls
 the same dataset). Feast's `FileSource` is parquet-native, so we convert
 once at prep time. Keeps your data-import workflow identical and lets
 Feast do its job.
+
+### Feast on the DLC path
+
+`local_train_feast_dlc.py` ties Feast and the DLC together using the
+**pre-fetch pattern**: Feast retrieval happens on the host, the joined
+dataframe is materialized to a parquet, and *that* parquet is what the
+DLC training container consumes via the standard SageMaker train
+channel. The container has no Feast install — it just reads parquet,
+trains, saves the bundle.
+
+```bash
+.venv/bin/python local_train_feast_dlc.py
+```
+
+This is the pattern that translates to a real SageMaker Pipeline: a
+`ProcessingStep` does Feast retrieval and writes parquet to S3, then a
+`TrainingStep` consumes that parquet. Same shape as here, just with S3
+in place of local files.
+
+The other approaches we considered and skipped:
+
+- **Pip-install Feast at training start** (drop a `requirements.txt`
+  into `src/`). Risky — the auto-install upgrades numpy/pyarrow and
+  shatters the DLC's pre-built sklearn/pandas wheels. Avoid.
+- **Bake Feast into a custom image** (`FROM <DLC>` + `pip install
+  feast`, push to your own ECR). Works, but tightly couples the trainer
+  image to the feature-store backend and means two systems to debug.
 
 ### Translating to SageMaker
 
