@@ -743,6 +743,25 @@ to all sub-shells, so once `GOOGLE_APPLICATION_CREDENTIALS` is in
 `.env`, every BQ-using target picks it up without further work.
 `.env.example` is the committed template.
 
+### Round-trip your own table through BigQuery
+
+To prove the full "your data lives in BQ → train on it" loop using the
+sonar dataset as a stand-in:
+
+```bash
+make data-sonar          # generate data/sonar.csv locally
+make bq-upload-sonar     # one-time: creates $PROJECT.sage_baker.sonar
+make bq-data-sonar       # materializes the table back via prepare_bigquery.py
+make train MODEL_DIR=./model_bq_sonar
+cat model_bq_sonar/metadata.json | jq .data_lineage
+```
+
+The `data_lineage` block now records the BQ query, project, snapshot
+timestamp, and dataset hash — same shape regardless of whether the
+source was iris-public or your own table. Replace the sonar table with
+whatever real dataset you want to train on; the rest of the pipeline
+doesn't change.
+
 To reproduce a past training run later: re-run the recorded
 `metadata.data_lineage.query` with `FOR SYSTEM_TIME AS OF
 '<snapshot_timestamp>'`, hash the result, verify it matches

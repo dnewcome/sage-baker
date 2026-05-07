@@ -59,8 +59,15 @@ data-iris: ## Prepare iris dataset (sklearn-bundled, 3-class)
 data-sonar: ## Prepare sonar dataset + Feast parquets (binary)
 	$(PY) prepare_sonar.py
 
-data-bigquery: ## Materialize a BigQuery query (needs gcloud auth)
+data-bigquery: ## Materialize a BigQuery query (default: public iris dataset)
 	$(PY) prepare_bigquery.py
+
+bq-upload-sonar: ## Upload data/sonar.csv to BQ as $PROJECT.sage_baker.sonar
+	$(PY) upload_sonar_to_bq.py
+
+bq-data-sonar: ## Materialize the sonar table back from BQ (after bq-upload-sonar)
+	$(PY) prepare_bigquery.py \
+		--query "SELECT * FROM \`$(GOOGLE_CLOUD_PROJECT).sage_baker.sonar\`"
 
 # ---------- training (host-side) ---------------------------------------
 
@@ -121,7 +128,7 @@ clean: ## Remove scratch dirs (keeps venv, MLflow data, Feast registry)
 	rm -rf .sm-scratch model_*/ materialized/
 
 .PHONY: help install install-torch install-lightgbm install-skops install-feast install-bigquery install-jupyter install-all
-.PHONY: data-iris data-sonar data-bigquery
+.PHONY: data-iris data-sonar data-bigquery bq-upload-sonar bq-data-sonar
 .PHONY: train train-torch train-lightgbm train-feast
 .PHONY: image train-byoc train-dlc train-feast-dlc
 .PHONY: serve mlflow-serve demo-categorical
