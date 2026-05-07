@@ -11,7 +11,12 @@ model_feast/
 model_skops/
 model_sklearn/
 model_lgb/
+model_nb/
 materialized/
+
+# Jupyter
+.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
 data/*.csv
 mlflow.db
 mlartifacts/

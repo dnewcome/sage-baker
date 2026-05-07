@@ -49,6 +49,7 @@ requirements-lightgbm.txt opt-in extras for the LightGBM example: lightgbm
 requirements-skops.txt    opt-in: skops (safer-pickle for sklearn)
 requirements-feast.txt opt-in extras for the Feast feature-store example
 requirements-bigquery.txt opt-in: google-cloud-bigquery + db-dtypes
+requirements-jupyter.txt  opt-in: jupyterlab + ipykernel + matplotlib + seaborn
 ```
 
 The training script lives in `src/` so the DLC's `source_dir` can point at a
@@ -843,6 +844,125 @@ it reaches the model:
 
 The boundary check turns "buried KeyError in the model layer at 3am"
 into "clean 400 at the API layer with the offending value named."
+
+## Creating a new model: end-to-end workflow
+
+```mermaid
+flowchart LR
+  A[1. prepare_X.py<br/>fetch → CSV/parquet<br/>+ lineage.json]
+  B[2. train_X.py<br/>read data → fit →<br/>save bundle]
+  C[3. local_serve.py<br/>verify model_fn loads<br/>and predicts]
+  D[4. MLflow<br/>track runs, register<br/>promising versions]
+  E[5. Deploy<br/>SageMaker endpoint /<br/>downstream caller]
+  A --> B --> C --> D --> E
+```
+
+Concrete steps:
+
+1. **Get the data into the project.** Write a `prepare_<name>.py` that
+   fetches it, shapes it (CSV or parquet with a `target` column), and
+   drops `data/lineage.json`. Use `prepare_sonar.py` as a template.
+2. **Pick or write a trainer.** The existing ones cover the common
+   cases:
+   - `src/train.py` — sklearn (RandomForest by default)
+   - `src/train_lightgbm.py` — LightGBM (best for tabular w/ categoricals)
+   - `src/train_torch.py` — custom torch `nn.Module`
+   - `src/train_feast.py` — features sourced from Feast
+
+   To add a new framework, copy whichever existing trainer is closest,
+   swap the model class and weights serializer, **keep the bundle
+   calls** (`bundle.save_config`, `bundle.save_metadata`,
+   `bundle.load_lineage`) and the `model_fn(model_dir)` shape
+   identical. The bundle envelope is the contract.
+3. **Train and verify locally.**
+   ```bash
+   .venv/bin/python src/train_<name>.py --train ./data --model-dir ./model_<name>
+   .venv/bin/python local_serve.py --model-dir ./model_<name>
+   ```
+   `local_serve.py` exercises `model_fn` end-to-end, the same contract
+   SageMaker / MLflow / your custom inference container will use.
+4. **Turn on tracking once it's working.**
+   ```bash
+   export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
+   ```
+   Retrain — every run now logs params, metrics, the bundle as
+   artifacts, and registers a model version. Iterate from there.
+5. **Promote and deploy.** Promote registered versions through
+   MLflow's stage transitions (Staging → Production). Deploy to
+   SageMaker via the `local_train_dlc.py` / `local_train_feast_dlc.py`
+   drivers (or your work's equivalent), pulling the model_uri from
+   MLflow's registry.
+
+### What this scaffolding does NOT replace
+
+The hard part of a new model — the *modeling* work — is universal and
+sits outside this repo:
+
+- **Define the metric.** Accuracy / F1 / AUC / latency / calibration —
+  pick before you start. Hardest part for many teams.
+- **Establish a dumb baseline.** "Predict majority class" for
+  classification, "predict the mean" for regression. Anything below
+  that is a bug, not a model.
+- **Pick a model class that fits the data shape.** Tabular →
+  LightGBM/RandomForest. Sequences/text/images → torch. Tiny dataset
+  → linear / k-NN. Pretrained foundation model available → fine-tune
+  via HuggingFace.
+- **Validation strategy.** Simple holdout (what we use here; fine for
+  IID data), k-fold cross-validation (more rigorous), **time-based
+  split** (mandatory if your data has temporal structure — never
+  random-split time series).
+- **Iterate features before hyperparameters.** New informative
+  features beat hyperparameter tuning ~10x in real projects.
+
+The repo's job is to make the path from "trained model in a Jupyter
+cell" to "deployed model with provenance" mechanical. The model
+design itself is on you.
+
+## Jupyter for exploration
+
+Once `.venv/` is set up, two extra steps make the whole project
+usable from notebooks:
+
+```bash
+.venv/bin/pip install -r requirements-jupyter.txt
+.venv/bin/python -m ipykernel install --user --name sage-baker --display-name "Python (sage-baker)"
+.venv/bin/jupyter lab
+```
+
+In a notebook, import from `src/` after adding it to `sys.path`:
+
+```python
+import sys; sys.path.insert(0, "src")
+import bundle, train
+
+# load any existing bundle by directory
+model = train.model_fn("./model_sklearn")
+preds = model.predict(X.head())
+
+# or call the training pipeline directly with overrides
+import importlib; importlib.reload(train)   # picks up edits
+import sys; sys.argv = ["train.py", "--train", "./data", "--model-dir", "./model_nb"]
+train.main()
+```
+
+A few patterns that pay off:
+
+- **`%load_ext autoreload; %autoreload 2`** — edit `src/train.py` and
+  re-run notebook cells without restarting the kernel.
+- **MLflow searchable from the notebook**:
+  `mlflow.search_runs(experiment_ids=["0"])` returns a DataFrame of
+  all runs with their params/metrics. Useful for "which run had the
+  best validation accuracy?"
+- **Treat notebooks as the exploration layer, scripts as the
+  production layer.** Code that's worth keeping graduates from
+  notebook cell → `src/` module → trainer entry point. Anything still
+  in a notebook is research, not infrastructure.
+
+The trainers themselves are normal Python modules — there's nothing
+notebook-specific about them, and nothing in the repo expects to be
+run from one place. The same `model_fn(model_dir)` works from a
+notebook, from `local_serve.py`, from MLflow's PyFunc, and from
+SageMaker.
 
 ## Hyperparameters
 
