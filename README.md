@@ -42,6 +42,8 @@ demo_categorical.py    runnable demo of "new enum value at inference" bug + 3 fi
 local_train.py         BYOC driver — uses the local image, no AWS account
 local_train_dlc.py     DLC driver  — uses the AWS scikit-learn DLC image
 local_train_feast_dlc.py DLC + Feast — host-side feature retrieval, container trains
+pipeline.py            production SageMaker Pipeline sketch (cloud, untested)
+deploy_endpoint.py     production endpoint deploy from a registered ModelPackage
 local_serve.py         placeholder — does not work yet (see "Serving", below)
 requirements.txt       sagemaker<3, boto3, mlflow, scikit-learn, pandas, docker
 requirements-torch.txt opt-in extras for the torch example: torch, safetensors
@@ -1027,6 +1029,207 @@ notebook-specific about them, and nothing in the repo expects to be
 run from one place. The same `model_fn(model_dir)` works from a
 notebook, from `local_serve.py`, from MLflow's PyFunc, and from
 SageMaker.
+
+## Productionizing on SageMaker
+
+Sketch of the path from "this repo running locally" to "managed
+SageMaker training + inference at scale." Most of what's here doesn't
+move; only the drivers and backends do.
+
+```mermaid
+flowchart LR
+  subgraph upstream["Upstream"]
+    BQ[(BigQuery)]
+    S3RAW[(S3: raw/)]
+  end
+
+  subgraph pipeline["SageMaker Pipeline (pipeline.py)"]
+    direction TB
+    PROC["ProcessingStep<br/>materialize features"]
+    TRAIN["TrainingStep<br/>SKLearn DLC + src/train.py"]
+    EVAL["ProcessingStep<br/>evaluate on holdout"]
+    GATE{"ConditionStep<br/>metric ≥ threshold?"}
+    REG["RegisterModel<br/>Model Package Group"]
+    PROC --> TRAIN --> EVAL --> GATE
+    GATE -- yes --> REG
+  end
+
+  subgraph artifacts["Storage + registries"]
+    S3DATA[(S3:<br/>training/parquet)]
+    S3MODEL[(S3:<br/>model.tar.gz)]
+    SMR[(SageMaker<br/>Model Registry)]
+    MLF[(MLflow<br/>tracking + registry)]
+  end
+
+  subgraph serving["Production"]
+    EP["Endpoint<br/>(real-time)<br/>deploy_endpoint.py"]
+    BT["Batch Transform<br/>(scheduled)"]
+    MON["Model Monitor<br/>drift + quality"]
+  end
+
+  BQ --> PROC
+  S3RAW --> PROC
+  PROC --> S3DATA --> TRAIN
+  TRAIN --> S3MODEL
+  REG --> SMR
+  TRAIN -. logs .-> MLF
+  REG -. mirrors .-> MLF
+
+  SMR -->|approved| EP
+  SMR -->|approved| BT
+  EP --> MON
+```
+
+### What carries over unchanged
+
+- **`src/train.py` (and the rest of `src/`)**. Same `model_fn(model_dir)`
+  contract; SageMaker's training container calls it the same way
+  `local_serve.py` does. No code changes.
+- **The bundle layout** (`config.json` + weights + `metadata.json` +
+  `data_lineage`). What you write to `/opt/ml/model/` gets tarred to
+  `model.tar.gz` and uploaded to S3 by SageMaker.
+- **`bundle.py`, `tracking.py`**. Generic helpers; the env-var-gated
+  MLflow integration just needs `MLFLOW_TRACKING_URI` set on the
+  training container.
+- **`feature_repo/` source files**. Same Feast definitions; you swap
+  the storage backends in `feature_store.yaml`.
+
+### What changes (in order of impact)
+
+| Local | Production |
+| ----- | ---------- |
+| `local_train.py` (host SDK call) | **SageMaker Pipeline** — see `pipeline.py` in this repo. Orchestrates ProcessingStep → TrainingStep → EvalStep → RegisterModel. |
+| `data/sonar.csv` mounted via `file://` | **S3** as the training channel: `estimator.fit({"train": "s3://bucket/training/<run-id>/"})`. |
+| `prepare_bigquery.py` on host | **SageMaker Processing job** running the same script. Inputs from BQ (or upstream S3), outputs to S3. Captures `lineage.json` as a sidecar. |
+| Feast: SQLite + parquet on disk | Feast: **Postgres on RDS** (online + registry) + **S3** (offline parquet). One config file change in `feature_store.yaml`. |
+| `mlflow.db` + `mlartifacts/` local | **AWS Managed MLflow** (newer, cheapest hands-off) or self-hosted ECS + RDS Postgres + S3 artifacts. |
+| AWS access keys in `aws configure` | **IAM role assumed by SageMaker**. Service account never holds long-lived creds. |
+| `local_serve.py` calling `model_fn` | **SageMaker Endpoint** — same DLC inference image hosting `model_fn` behind HTTPS `/invocations`. Auto-scaling, multi-AZ. See `deploy_endpoint.py`. |
+
+DLC images you'd use in production (no custom ECR push needed):
+
+- Training: AWS scikit-learn DLC at `683313688378.dkr.ecr.us-east-1.amazonaws.com/sagemaker-scikit-learn:1.2-1-cpu-py3` — same image `local_train_dlc.py` already pulls.
+- Inference: same DLC family hosts the inference toolkit; SageMaker selects the right tag automatically when you `model.deploy(...)`.
+
+### Pipeline anatomy
+
+`pipeline.py` is a sketch (untested in cloud — fill in your account
+constants). Five steps:
+
+1. **Prepare** (`ProcessingStep`) — runs `prepare_bigquery.py` (or
+   whatever materialization script) inside the SKLearn DLC. Reads from
+   BQ / S3, writes parquet + `lineage.json` to S3.
+2. **Train** (`TrainingStep`) — runs `src/train.py` unchanged via the
+   SKLearn estimator's `entry_point` flow. Bundle goes to S3 as
+   `model.tar.gz`. **The trainer image is just the AWS sklearn DLC**;
+   no custom ECR.
+3. **Evaluate** (`ProcessingStep`) — load the bundle, score on a
+   holdout, emit `metrics.json`. (`evaluate.py` is referenced but not
+   yet written — small, ~30 lines using `model_fn`.)
+4. **Condition** (`ConditionStep`) — only proceed if
+   `validation_accuracy ≥ threshold`.
+5. **Register** (`RegisterModel`) — drop the model into the SageMaker
+   Model Package Group with `approval_status="PendingManualApproval"`,
+   so a human approves before any deploy.
+
+To use:
+
+```bash
+# fill in PROJECT_NAME, BUCKET, ROLE_ARN, MODEL_PACKAGE_GROUP at the top
+.venv/bin/python pipeline.py upsert       # create/update the pipeline
+.venv/bin/python pipeline.py start        # kick off a run
+```
+
+Or kick off via SageMaker Studio's Pipelines UI once `upsert` has
+registered it.
+
+### Inference architecture
+
+Three modes, pick by latency:
+
+| Mode | Use when | How |
+| ---- | -------- | --- |
+| **Real-time endpoint** | <100 ms p99, low–medium volume | `deploy_endpoint.py` — wraps `model.deploy()` |
+| **Async endpoint** | seconds–minutes per request, large payloads, bursty | same SDK, `AsyncInferenceConfig` |
+| **Batch Transform** | offline scoring of millions of rows | `transformer = model.transformer(...)`, runs on cron, S3 in/out |
+
+In all three, the container internally calls our `model_fn(model_dir)`.
+**Identical code path** to `local_serve.py`.
+
+`deploy_endpoint.py` (the "model.deploy driver" — a small CLI script
+that wraps `sagemaker.ModelPackage(...).deploy(...)`) takes a
+registered model package ARN and stands up an endpoint:
+
+```bash
+.venv/bin/python deploy_endpoint.py \
+    --model-package-arn arn:aws:sagemaker:us-east-1:ACCT:model-package/sage-baker-sklearn/3 \
+    --endpoint-name sage-baker-sklearn-prod \
+    --role-arn arn:aws:iam::ACCT:role/SageMakerExecutionRole
+```
+
+To invoke afterwards:
+
+```python
+from sagemaker.predictor import Predictor
+Predictor(endpoint_name="sage-baker-sklearn-prod").predict([[5.1, 3.5, ...]])
+```
+
+To stop billing: `aws sagemaker delete-endpoint --endpoint-name ...`.
+Endpoints bill per instance-hour even when idle.
+
+### MLflow integration: pick one
+
+- **AWS Managed MLflow** — provisioned as a SageMaker resource, paid
+  by the hour (~$0.40/hr at last check). Best for one-team setups
+  that want experiment tracking without operating servers.
+- **Self-hosted on ECS** — `ghcr.io/mlflow/mlflow` container + RDS
+  Postgres (metadata) + S3 (artifacts). ~$25–50/mo at idle. Cheaper
+  at scale, more knobs.
+- **SageMaker Model Registry only** — skip MLflow entirely.
+  `RegisterModel` + the Model Package Group covers production deploys
+  and approval workflow. Simpler. Lose run history.
+
+Pick based on whether the team already uses MLflow. If yes, keep it
+upstream of SageMaker (MLflow registry is the source of truth for
+"approved models"; SageMaker just deploys what's been approved). If
+greenfield, SageMaker-only is one fewer system to operate.
+
+### Recommended first migration
+
+If you wanted to lift this project into a real cloud setup with
+minimum effort:
+
+1. **Provision an S3 bucket and a SageMaker execution role.** Role
+   needs `AmazonSageMakerFullAccess` + S3 read/write on the bucket.
+2. **Write `evaluate.py`** — the missing piece. ~30 lines: extract
+   model.tar.gz, call `model_fn`, score on `/opt/ml/processing/test/`,
+   write `metrics.json`. Same shape as `local_serve.py`.
+3. **Fill in the constants in `pipeline.py`** (BUCKET, ROLE_ARN,
+   MODEL_PACKAGE_GROUP), then `python pipeline.py upsert && start`.
+4. **Skip MLflow at first.** The SageMaker Model Registry covers the
+   minimum production need (versioning + approval). Add MLflow later
+   if you want experiment tracking.
+5. **Deploy via `deploy_endpoint.py`** for the first endpoint.
+   `ml.t2.medium` is fine (~$0.07/hr).
+
+Probably 2–3 days of glue work, plus the IAM/networking ceremony your
+org already has policies for. None of the modeling code in `src/`
+changes.
+
+### What this repo's bundle architecture buys you in production
+
+- **Trainers don't change between local and prod.** Same `src/train.py`,
+  same `model_fn`. The driver layer is the only swap.
+- **Bundles are inspectable.** `model.tar.gz` from prod has
+  `metadata.json` with the BQ query, dataset hash, git SHA, and
+  validation accuracy. You can audit any deployed model back to its
+  source data.
+- **MLflow vs SageMaker registry isn't either-or.** Both can point at
+  the same `model.tar.gz` in S3. Choose based on team workflow, not
+  infra constraints.
+- **No retrain on code changes.** Bug in `forward()`? Edit, commit,
+  build a new image (or push the new `src/` via `entry_point`),
+  redeploy. Weights don't move.
 
 ## Hyperparameters
 
