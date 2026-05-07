@@ -40,6 +40,8 @@ def main():
     parser.add_argument("--train", type=str, default=os.environ.get("SM_CHANNEL_TRAIN", "/opt/ml/input/data/train"))
     args, _ = parser.parse_known_args()
 
+    os.makedirs(args.model_dir, exist_ok=True)
+
     files = sorted(glob.glob(os.path.join(args.train, "*.csv"))
                    + glob.glob(os.path.join(args.train, "*.parquet")))
     if not files:
@@ -94,6 +96,15 @@ def main():
 
         # log the bundle as opaque MLflow artifacts (no-op if disabled).
         tracking.log_bundle(args.model_dir)
+
+        # also register a PyFunc wrapper so the model appears in the
+        # MLflow Models tab / Registry. The wrapper calls model_fn at
+        # load time — MLflow never pickles RandomForestClassifier itself.
+        tracking.register_bundle_as_pyfunc(
+            model_dir=args.model_dir,
+            model_fn=model_fn,
+            registered_name=os.environ.get("MLFLOW_REGISTERED_MODEL", "sage-baker-sklearn"),
+        )
 
 
 def model_fn(model_dir):

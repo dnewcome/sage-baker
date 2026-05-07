@@ -146,6 +146,11 @@ def main():
         })
 
         tracking.log_bundle(args.model_dir)
+        tracking.register_bundle_as_pyfunc(
+            model_dir=args.model_dir,
+            model_fn=model_fn,
+            registered_name=os.environ.get("MLFLOW_REGISTERED_MODEL", "sage-baker-torch"),
+        )
 
 
 def model_fn(model_dir):

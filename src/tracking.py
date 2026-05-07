@@ -54,3 +54,40 @@ def log_bundle(model_dir, artifact_path="model"):
         return
     import mlflow
     mlflow.log_artifacts(model_dir, artifact_path=artifact_path)
+
+
+def register_bundle_as_pyfunc(model_dir, model_fn, registered_name=None,
+                              artifact_path="pyfunc_model", pip_requirements=None):
+    """Wrap our model_fn in a custom mlflow.pyfunc.PythonModel and log it.
+
+    What this gets you that log_bundle alone doesn't: the model shows up in
+    MLflow's "Models" tab (and the Model Registry if `registered_name` is
+    set) — which other systems, including SageMaker's MLflow integration,
+    look at to deploy. The wrapper calls our model_fn at load time, so
+    MLflow never pickles the user's class.
+
+    `model_fn` is the same function trainers expose for SageMaker
+    inference; we just bridge it to MLflow's pyfunc interface.
+    """
+    if not _enabled():
+        return None
+    import mlflow
+    import mlflow.pyfunc
+
+    # The class lives here, but only its *string identifier* is what gets
+    # serialized — the registry knows it as "BundleWrapper". The user's
+    # model class is reconstructed via their model_fn at load time.
+    class BundleWrapper(mlflow.pyfunc.PythonModel):
+        def load_context(self, context):
+            self._model = model_fn(context.artifacts["bundle"])
+
+        def predict(self, context, model_input):
+            return self._model.predict(model_input)
+
+    return mlflow.pyfunc.log_model(
+        artifact_path=artifact_path,
+        python_model=BundleWrapper(),
+        artifacts={"bundle": model_dir},
+        registered_model_name=registered_name,
+        pip_requirements=pip_requirements,
+    )

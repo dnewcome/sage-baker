@@ -1,0 +1,9 @@
+{
+  "saved_at": "2026-05-07T08:00:15.591621+00:00",
+  "python": "3.12.9",
+  "git_sha": "2361005140645baaeae2888a56429fb55957c28f",
+  "validation_accuracy": 0.7857142857142857,
+  "n_train": 166,
+  "n_test": 42,
+  "dataset_file": "sonar.csv"
+}

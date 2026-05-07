@@ -1,39 +1,85 @@
-"""Deploy the trained model to a local SageMaker endpoint and run a prediction.
+"""Test inference against a trained model bundle.
 
-Run after local_train.py — it picks up the model artifact from the last run.
+Exercises the contract every inference path uses — `model_fn(model_dir)`
+returns a model object, you call .predict on it. SageMaker's inference
+container does exactly this internally; so does our MLflow PyFunc
+wrapper. Testing model_fn here = testing all of them.
+
+By default, looks at ./model_sklearn/ (the host-side trainer's output).
+Pass `--artifact path/to/model.tar.gz` to test a SageMaker artifact
+instead — but watch out for sklearn version skew between the trainer's
+container and your host venv (this is exactly the pickle-coupling
+problem the bundle architecture warns about; the framework_version
+field in config.json is the signal).
 """
-import os
+import argparse
 import glob
-from sagemaker.local import LocalSession
-from sagemaker.sklearn.model import SKLearnModel
+import os
+import sys
+import tarfile
+import tempfile
 
-os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
-os.environ.setdefault("AWS_ACCESS_KEY_ID", "dummy")
-os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "dummy")
+import pandas as pd
+import sklearn
 
-session = LocalSession()
-session.config = {"local": {"local_code": True}}
+sys.path.insert(0, "src")
+import bundle  # type: ignore  # noqa: E402
+from train import model_fn  # type: ignore  # noqa: E402
 
-# Local Mode writes model.tar.gz under /tmp/tmp*/model.tar.gz; grab the newest.
-candidates = sorted(glob.glob("/tmp/tmp*/model.tar.gz"), key=os.path.getmtime)
-if not candidates:
-    raise SystemExit("No local model artifact found — run local_train.py first.")
-model_data = "file://" + candidates[-1]
-print("using model:", model_data)
 
-model = SKLearnModel(
-    model_data=model_data,
-    role="arn:aws:iam::000000000000:role/SageMakerRole",
-    entry_point="train.py",
-    source_dir=".",
-    framework_version="1.2-1",
-    py_version="py3",
-    sagemaker_session=session,
-)
+def latest_dlc_artifact():
+    """Find the most recent SageMaker model.tar.gz under .sm-scratch/."""
+    SCRATCH = os.path.abspath(".sm-scratch")
+    candidates = sorted(
+        glob.glob(os.path.join(SCRATCH, "tmp*/compressed_artifacts/model.tar.gz")),
+        key=os.path.getmtime,
+    )
+    return candidates[-1] if candidates else None
 
-predictor = model.deploy(initial_instance_count=1, instance_type="local")
-try:
-    sample = [[5.1, 3.5, 1.4, 0.2], [6.7, 3.0, 5.2, 2.3]]
-    print("prediction:", predictor.predict(sample))
-finally:
-    predictor.delete_endpoint()
+
+def warn_version_skew(model_dir):
+    cfg = bundle.load_config(model_dir)
+    trained = cfg.get("framework_version", "?")
+    current = sklearn.__version__ if cfg.get("framework") == "sklearn" else "?"
+    if trained != current:
+        print(f"⚠ framework_version skew: trained with {trained}, "
+              f"loading with {current} — pickle may fail")
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model-dir", default="./model_sklearn",
+                        help="path to a bundle directory (default: ./model_sklearn)")
+    parser.add_argument("--artifact", help="path to model.tar.gz; if set, extracted to a temp dir")
+    args = parser.parse_args()
+
+    if args.artifact:
+        tmp = tempfile.mkdtemp(prefix="bundle_")
+        with tarfile.open(args.artifact) as tf:
+            tf.extractall(tmp)
+        model_dir = tmp
+        print(f"extracted {args.artifact} → {model_dir}")
+    else:
+        if not os.path.isdir(args.model_dir):
+            sys.exit(f"no bundle at {args.model_dir} — run "
+                     f"`python src/train.py --train ./data --model-dir ./model_sklearn` first")
+        model_dir = args.model_dir
+
+    print(f"bundle contents: {sorted(os.listdir(model_dir))}")
+    warn_version_skew(model_dir)
+
+    model = model_fn(model_dir)
+    print(f"loaded: {type(model).__name__}")
+
+    df = pd.read_csv("data/sonar.csv")
+    X = df.drop(columns=["target"]).head(5).values.tolist()
+    y = df["target"].head(5).tolist()
+    predictions = model.predict(X).tolist()
+
+    print(f"\n  actual:    {y}")
+    print(f"  predicted: {predictions}")
+    print(f"  matches:   {sum(a == p for a, p in zip(y, predictions))} / {len(y)}")
+
+
+if __name__ == "__main__":
+    main()
