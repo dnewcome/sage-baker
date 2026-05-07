@@ -125,6 +125,40 @@ model artifact: file:///.../sage-baker/.sm-scratch/.../compressed_artifacts/mode
 The model artifact (`model.tar.gz` containing `model.joblib`) lives under
 `.sm-scratch/`.
 
+## Training paths at a glance
+
+```mermaid
+flowchart LR
+  CSV[data/sonar.csv]
+  PQ[(feature_repo/<br/>parquets)]
+
+  subgraph byoc_path["BYOC &nbsp;<i>local_train.py</i>"]
+    direction TB
+    BD[local Docker image<br/>sage-baker-sklearn]
+    BC["container<br/>train.py reads CSV/parquet<br/>writes /opt/ml/model"]
+  end
+
+  subgraph dlc_path["DLC &nbsp;<i>local_train_dlc.py</i>"]
+    direction TB
+    DD[AWS DLC pulled from ECR]
+    DC["container<br/>SKLearn entry_point runs<br/>src/train.py"]
+  end
+
+  subgraph feast_path["DLC + Feast &nbsp;<i>local_train_feast_dlc.py</i>"]
+    direction TB
+    FH[host: Feast<br/>get_historical_features]
+    MAT[materialized.parquet]
+    FC["container<br/>train.py reads parquet"]
+  end
+
+  CSV --> BD --> BC --> B_OUT([bundle])
+  CSV --> DD --> DC --> D_OUT([bundle])
+  PQ --> FH --> MAT --> FC --> F_OUT([bundle])
+```
+
+All three paths converge on the same `model_dir/` bundle layout — the
+`model_fn(model_dir)` loader doesn't care which path produced it.
+
 ## When to use which
 
 | Use BYOC when …                              | Use DLC when …                              |
@@ -159,6 +193,33 @@ this repo is an extension of that idea. MLflow's "MLmodel" format, TF's
 SavedModel, TorchServe's `.mar`, and ONNX are all alternatives at different
 abstraction levels — none of them solve the code/weights coupling problem
 unless you opt out of their default flavors.
+
+```mermaid
+flowchart LR
+  subgraph code["Code (git, hot-editable)"]
+    direction TB
+    CL[Model class<br/>SonarMLP / RFClassifier]
+    LB[bundle.py helpers]
+    LD[model_fn loader]
+  end
+
+  subgraph dir["model/ &nbsp; (bundle on disk)"]
+    direction TB
+    CFG[config.json<br/><i>class + init args + weights pointer</i>]
+    W[model.safetensors<br/>or model.joblib<br/><i>just numbers</i>]
+    META[metadata.json<br/><i>git sha, metrics, timestamp</i>]
+  end
+
+  CL -.->|"save_config({class, params, weights_file})"| CFG
+  LB -.-> CFG
+  LB -.-> META
+  CL -->|"save_file / joblib.dump"| W
+
+  CFG -->|"read"| LD
+  W -->|"read"| LD
+  CL -.->|"instantiate from class registry"| LD
+  LD -->|"return"| OUT([assembled model])
+```
 
 ### Bundle layout
 
@@ -337,6 +398,35 @@ files — and translates to a SageMaker workflow by swapping backends:
 Note: **DynamoDB is one of several online-store options, not required.**
 Feast supports SQLite, Postgres, Redis, MySQL, Cassandra, and others.
 This prototype skips DynamoDB entirely.
+
+```mermaid
+flowchart LR
+  KAGGLE[Kaggle / UCI / ...<br/>CSV] --> PREP[prepare_sonar.py]
+  PREP --> CSV[data/sonar.csv<br/><i>non-Feast trainers</i>]
+  PREP --> FEAT[(feature_repo/<br/>sonar_features.parquet)]
+  PREP --> LBL[(feature_repo/<br/>sonar_labels.parquet)]
+
+  APPLY["feast apply<br/><i>registers entity + view</i>"]
+  FEAT -.-> APPLY
+
+  subgraph train["Training"]
+    LBL --> EDF[entity_df]
+    EDF --> JOIN["store.get_historical_features<br/><i>point-in-time join</i>"]
+    FEAT --> JOIN
+    JOIN --> ENRICHED[enriched dataframe]
+    ENRICHED --> RF[RandomForest.fit]
+    RF --> BUNDLE([model bundle<br/>config.feature_refs])
+  end
+
+  subgraph serve["Serving"]
+    MATR["feast materialize-incremental<br/><i>push to online store</i>"]
+    FEAT -.-> MATR --> ONLINE[(SQLite online store)]
+    REQ[predict_one signal_id=N] --> ONLOOK["store.get_online_features"]
+    ONLINE --> ONLOOK
+    ONLOOK --> CLF[load bundle, predict]
+    CLF --> PRED[prediction]
+  end
+```
 
 ### Setup
 
