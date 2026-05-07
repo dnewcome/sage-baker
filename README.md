@@ -28,7 +28,8 @@ This project supports both:
 
 ```
 Dockerfile          minimal Python + scikit-learn image with a `train` command (BYOC)
-src/train.py        training script — works in both BYOC and DLC modes
+src/bundle.py       generic helpers for the standard model-bundle layout
+src/train.py        sklearn training script — example of using bundle.py
 prepare_data.py     writes data/iris.csv (toy multiclass dataset)
 prepare_sonar.py    writes data/sonar.csv (Sonar Rocks vs Mines, binary)
 local_train.py      BYOC driver — uses the local image, no AWS account
@@ -131,6 +132,85 @@ The big practical wins of DLC are the `entry_point` flow (no rebuilds on
 script edits) and the inference toolkit (working serving in one `.deploy()`
 call). BYOC's wins are zero AWS dependency and a small, fully-controlled
 image.
+
+## Architecture: separating code from weights
+
+The single most important design decision in a training system is **what
+gets persisted with the model and what stays in code**. Pickle (and
+`torch.save(model, ...)`, and the default `mlflow.<flavor>.log_model`)
+freezes the running Python object — including a reference to the class
+that defined it. When the class moves, gets renamed, or has a method
+added, unpickling either explodes or silently loads the wrong thing. This
+is the trap where every code change forces a retrain.
+
+The fix is a layered model: **code in git, weights as data, config as JSON.**
+
+### Bundle layout
+
+The training script writes a directory with this shape, regardless of
+framework:
+
+```
+model/
+├── config.json           how to build the model (arch, hyperparams,
+│                         weights_file pointer, feature schema)
+├── <weights_file>        the actual numbers (model.joblib, model.safetensors, …)
+├── preprocessor.json     [optional] preprocessor state (scaler stats,
+│                         label maps, vocab refs)
+└── metadata.json         provenance: timestamp, python version, git sha,
+                          training metrics
+```
+
+`config.json` knows the name of the weights file. The loader reads the
+config, instantiates the model class with those args, and loads weights
+from the file the config points at. The class definition lives in your
+repo — versioned, debuggable, hot-editable. Want to fix a bug in
+`forward()`? Edit, reload weights, done. No retrain.
+
+### Format choices
+
+| Thing                          | Format                                       |
+| ------------------------------ | -------------------------------------------- |
+| Torch / JAX / TF tensors       | **`safetensors`** (mmap, no pickle, no RCE)  |
+| Embeddings (raw arrays)        | safetensors or `.npz`                        |
+| Tokenizers, HF models          | `tokenizer.save_pretrained(dir)`             |
+| HF model end-to-end            | `model.save_pretrained(dir)` — already does the layout above |
+| Hyperparameters / model config | JSON                                         |
+| sklearn pipelines              | `joblib` (pickle) is least-bad — pin `scikit-learn==X.Y` and accept it. For *important* models, extract coefficients / tree structures into JSON manually. |
+
+`safetensors` is the boring-good default for tensor data: zero-copy mmap,
+no arbitrary code execution on load, supported by torch / JAX / TF / HF.
+
+### How this maps to other systems
+
+- **SageMaker.** Whatever you put in `/opt/ml/model/` gets tarred to
+  `model.tar.gz`. Write the bundle there during training; the inference
+  container's `model_fn(model_dir)` calls your `load(model_dir)` to
+  reassemble. Same function, two consumers.
+- **MLflow.** Two clean paths. Either treat MLflow as tracking only and
+  use `mlflow.log_artifacts("model/")` to log the bundle as opaque files —
+  load via your own `load(dir)`, never `mlflow.X.load_model`. Or wrap
+  `load(dir)` in a custom `mlflow.pyfunc.PythonModel` so
+  `mlflow.pyfunc.load_model(uri)` does the right thing. The point is to
+  never let MLflow pickle your class.
+- **Plain `pickle` / `torch.save(model, ...)` / `mlflow.X.log_model`.**
+  These are exactly what we're avoiding. They can't survive code changes
+  and they're a remote-code-execution hazard on load.
+
+### What's in this repo
+
+- `src/bundle.py` — generic JSON helpers (`save_config`, `load_config`,
+  `save_metadata`, `load_metadata`). Framework-agnostic.
+- `src/train.py` — concrete sklearn example. Trains a `RandomForest`,
+  writes the bundle layout via `bundle.py`, and exposes `model_fn(model_dir)`
+  that reads the bundle back. The same `model_fn` is what SageMaker's
+  inference container calls.
+
+To add a new framework, drop a parallel trainer (e.g.
+`src/train_torch.py`) that calls the same `bundle.save_config(...)` /
+`bundle.save_metadata(...)` and writes its weights with `safetensors`
+instead of `joblib`. The bundle layout is the contract; what each
+framework writes inside it is its own business.
 
 ## Hyperparameters
 
