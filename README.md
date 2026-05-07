@@ -32,13 +32,16 @@ src/bundle.py          generic helpers for the standard model-bundle layout
 src/tracking.py        opt-in MLflow tracking helpers (no-op when unconfigured)
 src/train.py           sklearn training example — bundle layout, model_fn
 src/train_torch.py     torch training example — same bundle layout, safetensors weights
+src/train_feast.py     sklearn trainer pulling features via Feast (point-in-time join)
+feature_repo/          Feast feature definitions (entities.py, features.py, store.yaml)
 prepare_data.py        writes data/iris.csv (toy multiclass dataset)
-prepare_sonar.py       writes data/sonar.csv (Sonar Rocks vs Mines, binary)
+prepare_sonar.py       writes data/sonar.csv + Feast parquets (Sonar Rocks vs Mines)
 local_train.py         BYOC driver — uses the local image, no AWS account
 local_train_dlc.py     DLC driver  — uses the AWS scikit-learn DLC image
 local_serve.py         placeholder — does not work yet (see "Serving", below)
 requirements.txt       sagemaker<3, boto3, mlflow, scikit-learn, pandas, docker
 requirements-torch.txt opt-in extras for the torch example: torch, safetensors
+requirements-feast.txt opt-in extras for the Feast feature-store example
 ```
 
 The training script lives in `src/` so the DLC's `source_dir` can point at a
@@ -312,6 +315,82 @@ container only for testing the SageMaker-deployment-shaped path.
 
 For a remote MLflow server (e.g. company's), no rewrite happens — the
 driver passes the URL through unchanged.
+
+## Feature store: Feast prototype
+
+Feast solves three real problems training pipelines tend to botch:
+**training/serving skew** (same feature computed differently in batch and
+at inference), **point-in-time correctness** (joining features without
+leaking future data into past examples), and **reusability** (define
+features once, consume from many models).
+
+This prototype runs entirely on free local components — SQLite + parquet
+files — and translates to a SageMaker workflow by swapping backends:
+
+| Component       | Local (here)            | SageMaker / production       |
+| --------------- | ----------------------- | ---------------------------- |
+| Offline store   | parquet files           | S3 (just change `path:` in `FileSource`) |
+| Online store    | SQLite                  | Postgres on RDS, Redis on ElastiCache (~$15/mo each) |
+| Registry        | local sqlite file       | S3 file or Postgres          |
+
+Note: **DynamoDB is one of several online-store options, not required.**
+Feast supports SQLite, Postgres, Redis, MySQL, Cassandra, and others.
+This prototype skips DynamoDB entirely.
+
+### Setup
+
+```bash
+.venv/bin/pip install -r requirements-feast.txt
+.venv/bin/python prepare_sonar.py    # also writes feast parquets
+
+# register entities + feature views
+cd feature_repo && ../.venv/bin/feast apply && cd ..
+
+# push features to the online store (run after data updates)
+cd feature_repo && ../.venv/bin/feast materialize-incremental \
+    $(date -u +%Y-%m-%dT%H:%M:%S) && cd ..
+```
+
+### Train and serve via Feast
+
+```bash
+.venv/bin/python src/train_feast.py
+```
+
+The trainer:
+1. Reads the labels parquet as the *entity dataframe* (signal_id +
+   event_timestamp + target).
+2. Calls `store.get_historical_features(...)` for the 60 sonar bands.
+   Feast does a point-in-time join — features as of each row's
+   `event_timestamp`.
+3. Trains a RandomForest on the resulting frame.
+4. Saves the bundle, recording `feature_refs` in `config.json`. The
+   inference path (`predict_one(model_dir, signal_id)` in
+   `src/train_feast.py`) re-reads those refs, calls
+   `get_online_features(...)` for live lookup, and runs the model.
+
+Same feature definitions used for both training and serving — that's
+the whole point of a feature store.
+
+### Why CSV → Parquet at prep time
+
+You can keep importing CSVs from Kaggle (`prepare_sonar.py` still pulls
+the same dataset). Feast's `FileSource` is parquet-native, so we convert
+once at prep time. Keeps your data-import workflow identical and lets
+Feast do its job.
+
+### Translating to SageMaker
+
+Three changes when you move this to a SageMaker workflow:
+
+1. `feature_store.yaml`: `online_store.type` → `postgres` or `redis`,
+   point at your RDS/ElastiCache endpoint.
+2. `feature_repo/features.py`: `FileSource(path=...)` → `s3://bucket/key`.
+3. The trainer image needs Feast installed and read access to the
+   registry + offline store (S3 read perms, Postgres connect perms).
+
+The trainer code itself doesn't change at all — that's what the feature
+store buys you.
 
 ## Hyperparameters
 

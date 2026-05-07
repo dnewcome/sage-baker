@@ -1,0 +1,19 @@
+project: sage_baker
+provider: local
+registry: data/registry.db
+online_store:
+    # SQLite is the zero-cost prototype choice: no daemon, no network,
+    # no DynamoDB bill. To translate to a SageMaker / production setup
+    # later, swap this for `postgres` (RDS, ~$15/mo at db.t4g.micro) or
+    # `redis` (ElastiCache, similar). DynamoDB is only one of several
+    # backends — Feast does not require it.
+    type: sqlite
+    path: data/online_store.db
+offline_store:
+    # FileOfflineStore reads parquet from local disk. Translates to S3 by
+    # changing the `path` in the FileSource to s3://bucket/... (no other
+    # config change needed) — that's the obvious SageMaker path.
+    type: file
+entity_key_serialization_version: 3
+auth:
+    type: no_auth

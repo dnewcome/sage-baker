@@ -7,4 +7,12 @@ __pycache__/
 output/
 model/
 model_torch/
+model_feast/
 data/*.csv
+mlflow.db
+mlartifacts/
+mlruns/
+
+# Feast: source files are tracked, generated state is not.
+feature_repo/data/*.parquet
+feature_repo/data/*.db
