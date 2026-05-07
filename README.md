@@ -29,7 +29,8 @@ This project supports both:
 ```
 Dockerfile          minimal Python + scikit-learn image with a `train` command (BYOC)
 src/train.py        training script — works in both BYOC and DLC modes
-prepare_data.py     writes data/iris.csv (toy dataset)
+prepare_data.py     writes data/iris.csv (toy multiclass dataset)
+prepare_sonar.py    writes data/sonar.csv (Sonar Rocks vs Mines, binary)
 local_train.py      BYOC driver — uses the local image, no AWS account
 local_train_dlc.py  DLC driver  — uses the AWS scikit-learn DLC image
 local_serve.py      placeholder — does not work yet (see "Serving", below)
@@ -64,11 +65,16 @@ python3 -m venv .venv
 
 ## Running training
 
-Generate the toy dataset once:
+Generate a dataset (pick one — each script wipes `data/` and writes one CSV):
 
 ```bash
-.venv/bin/python prepare_data.py
+.venv/bin/python prepare_data.py    # iris (3-class, 150 rows)
+# or
+.venv/bin/python prepare_sonar.py   # Rocks vs Mines (binary, 208 rows)
 ```
+
+`train.py` reads whichever CSV is in the train channel — no code changes
+needed to swap datasets, as long as the CSV has a `target` column.
 
 ### BYOC (offline)
 

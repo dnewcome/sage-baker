@@ -6,6 +6,7 @@ SageMaker conventions:
   /opt/ml/model/                 -- saved model artifacts (tarred to model.tar.gz)
 """
 import argparse
+import glob
 import json
 import os
 import joblib
@@ -34,7 +35,11 @@ def main():
     parser.add_argument("--train", type=str, default=os.environ.get("SM_CHANNEL_TRAIN", "/opt/ml/input/data/train"))
     args, _ = parser.parse_known_args()
 
-    df = pd.read_csv(os.path.join(args.train, "iris.csv"))
+    csvs = sorted(glob.glob(os.path.join(args.train, "*.csv")))
+    if not csvs:
+        raise SystemExit(f"no CSV file found in {args.train}")
+    df = pd.read_csv(csvs[0])
+    print(f"loaded {csvs[0]}: {len(df)} rows, {len(df.columns)} columns")
     X = df.drop(columns=["target"])
     y = df["target"]
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
