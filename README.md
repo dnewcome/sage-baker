@@ -38,6 +38,7 @@ feature_repo/          Feast feature definitions (entities.py, features.py, stor
 prepare_data.py        writes data/iris.csv + lineage.json (toy multiclass dataset)
 prepare_sonar.py       writes data/sonar.csv + Feast parquets + lineage.json
 prepare_bigquery.py    materializes a BigQuery query to parquet + lineage.json
+demo_categorical.py    runnable demo of "new enum value at inference" bug + 3 fixes
 local_train.py         BYOC driver — uses the local image, no AWS account
 local_train_dlc.py     DLC driver  — uses the AWS scikit-learn DLC image
 local_train_feast_dlc.py DLC + Feast — host-side feature retrieval, container trains
@@ -750,6 +751,98 @@ longer with table snapshots) this is byte-for-byte exact.
 - **BQ Storage API** (`google-cloud-bigquery-storage`): streams query
   results in batches via Arrow for datasets that don't fit in memory.
   Trade pandas convenience for scale.
+
+## Training/serving skew: two real bugs and what fixes them
+
+The two most common production bugs in ML systems aren't bad models —
+they're shape mismatches between what the model saw at training and
+what shows up at inference. Both look like "the model crashed" or
+"the model output garbage in production"; the underlying causes are
+different.
+
+### Bug 1: missing data at inference
+
+Training data is built post-hoc from the warehouse — every join is
+complete, every column populated. Then at inference time the user's
+session is mid-flight, the upstream service is slow, or the feature
+just hasn't arrived yet. The model crashes on `None`, or worse,
+silently mispredicts.
+
+A feature store helps but **not by magic**. What it actually buys you:
+
+- One feature definition used in both training and serving — eliminates
+  the "computed differently" version of the bug.
+- TTLs on features — Feast returns NULL after a configurable window, so
+  staleness is explicit and consistent.
+- Point-in-time historical join — when you ask for training features at
+  some entity's `event_timestamp`, you get exactly what was *known* at
+  that timestamp, not a backfilled "complete" view.
+
+What the feature store does NOT do: teach your model to handle NULL.
+That's a *training-time* responsibility:
+
+1. **Train with realistic missingness.** Build the entity dataframe
+   from the actual entity-creation events; let `get_historical_features`
+   return NULL for things that hadn't happened yet. New users have no
+   `last_purchase_at` at training, exactly like at inference.
+2. **Match imputation rules in both places.** If you `fillna(-1)` at
+   training, do it at inference. Feast's `transformation`s on a
+   FeatureView centralize this in one place.
+
+### Bug 2: unseen categorical values at inference
+
+The classic case: model trained on `browser ∈ {chrome, firefox,
+safari}`, deployed; six months later "Edge 127" hits 5% of traffic and
+everything explodes. **A feature store does not help here** — this is
+a model/encoding choice.
+
+`demo_categorical.py` runs three responses to this bug end-to-end:
+
+```
+trained on browsers: ['chrome', 'firefox', 'safari']
+5 inference rows now have unseen value 'edge'
+
+--- Path 1: sklearn OneHotEncoder default ---
+CRASH ValueError: Found unknown categories ['edge'] in column 0 during transform
+
+--- Path 2: sklearn OneHotEncoder(handle_unknown='ignore') ---
+OK   predictions: [1, 0, 1, 0, 0]
+
+--- Path 3: LightGBM + OrdinalEncoder(unknown_value=-1) ---
+OK   predictions: [1, 0, 1, 0, 0]
+```
+
+Defaults bite. The fixes, in order of how good the result is:
+
+| Approach | What happens with unseen values |
+| -------- | ------------------------------- |
+| `OneHotEncoder()` (default `handle_unknown="error"`) | crashes — the typical production bug |
+| `OneHotEncoder(handle_unknown="ignore")` | becomes all-zeros row; doesn't crash; **loses whatever signal that value carried** |
+| `HashingEncoder` (feature hashing) | hash → fixed bucket; new values land somewhere; some collisions |
+| **LightGBM with `categorical_feature=[...]`** | unseen values get their own group at split time; preserves signal |
+| Train an `<UNK>` token on rare values | replace categories appearing fewer than K times with `"other"` during training; model learns a real "other" branch |
+
+For tabular data with categorical features, the boring-good answer is
+**switch to LightGBM with native categorical handling**. It's faster,
+usually more accurate than RandomForest, and immune to this whole
+class of bug by design.
+
+### What also helps: validation at the inference boundary
+
+Both bugs above hide inside Python type errors deep in the model
+pipeline. Catch them earlier with a schema check on the input *before*
+it reaches the model:
+
+- **Pandera** — DataFrame schema validation; "this column must be one
+  of {'chrome', 'firefox', 'safari', 'other'} and not null."
+- **Pydantic** — request-shape validation for HTTP endpoints; standard
+  in FastAPI inference services.
+- **Drift monitoring** — log feature distributions at inference, alert
+  on KL divergence or population-stability index (PSI) shifts. Tools:
+  Evidently, TFDV, or roll your own with `scipy.stats.entropy`.
+
+The boundary check turns "buried KeyError in the model layer at 3am"
+into "clean 400 at the API layer with the offending value named."
 
 ## Hyperparameters
 
