@@ -27,15 +27,17 @@ This project supports both:
 ## Repo layout
 
 ```
-Dockerfile          minimal Python + scikit-learn image with a `train` command (BYOC)
-src/bundle.py       generic helpers for the standard model-bundle layout
-src/train.py        sklearn training script — example of using bundle.py
-prepare_data.py     writes data/iris.csv (toy multiclass dataset)
-prepare_sonar.py    writes data/sonar.csv (Sonar Rocks vs Mines, binary)
-local_train.py      BYOC driver — uses the local image, no AWS account
-local_train_dlc.py  DLC driver  — uses the AWS scikit-learn DLC image
-local_serve.py      placeholder — does not work yet (see "Serving", below)
-requirements.txt    sagemaker<3, boto3, scikit-learn, pandas, docker
+Dockerfile             minimal Python + scikit-learn image with a `train` command (BYOC)
+src/bundle.py          generic helpers for the standard model-bundle layout
+src/train.py           sklearn training example — bundle layout, model_fn
+src/train_torch.py     torch training example — same bundle layout, safetensors weights
+prepare_data.py        writes data/iris.csv (toy multiclass dataset)
+prepare_sonar.py       writes data/sonar.csv (Sonar Rocks vs Mines, binary)
+local_train.py         BYOC driver — uses the local image, no AWS account
+local_train_dlc.py     DLC driver  — uses the AWS scikit-learn DLC image
+local_serve.py         placeholder — does not work yet (see "Serving", below)
+requirements.txt       sagemaker<3, boto3, scikit-learn, pandas, docker
+requirements-torch.txt opt-in extras for the torch example: torch, safetensors
 ```
 
 The training script lives in `src/` so the DLC's `source_dir` can point at a
@@ -145,6 +147,14 @@ is the trap where every code change forces a retrain.
 
 The fix is a layered model: **code in git, weights as data, config as JSON.**
 
+There is no single industry-standard format for this; the closest thing is
+HuggingFace's `save_pretrained` / `from_pretrained` (which writes
+`config.json` + `model.safetensors` + tokenizer files), and the layout in
+this repo is an extension of that idea. MLflow's "MLmodel" format, TF's
+SavedModel, TorchServe's `.mar`, and ONNX are all alternatives at different
+abstraction levels — none of them solve the code/weights coupling problem
+unless you opt out of their default flavors.
+
 ### Bundle layout
 
 The training script writes a directory with this shape, regardless of
@@ -197,20 +207,51 @@ no arbitrary code execution on load, supported by torch / JAX / TF / HF.
   These are exactly what we're avoiding. They can't survive code changes
   and they're a remote-code-execution hazard on load.
 
+### How this maps to MLflow
+
+Two clean ways to use the bundle layout with MLflow tracking:
+
+```python
+# 1. MLflow as tracking only — log the bundle as opaque artifacts.
+mlflow.log_artifacts("model/")
+# Loading: mlflow.artifacts.download_artifacts(...) then call your load(dir).
+
+# 2. Custom PyFunc — wrap bundle.load in mlflow.pyfunc.PythonModel.
+class BundleModel(mlflow.pyfunc.PythonModel):
+    def load_context(self, context):
+        self.model = your_load_fn(context.artifacts["bundle"])
+    def predict(self, context, model_input):
+        return self.model.predict(model_input)
+
+mlflow.pyfunc.log_model(
+    artifact_path="model",
+    python_model=BundleModel(),
+    artifacts={"bundle": "model/"},
+)
+# Loading: mlflow.pyfunc.load_model(uri) — uses your loader, not pickle.
+```
+
+Either way, MLflow never touches your model class.
+
 ### What's in this repo
 
 - `src/bundle.py` — generic JSON helpers (`save_config`, `load_config`,
   `save_metadata`, `load_metadata`). Framework-agnostic.
-- `src/train.py` — concrete sklearn example. Trains a `RandomForest`,
-  writes the bundle layout via `bundle.py`, and exposes `model_fn(model_dir)`
-  that reads the bundle back. The same `model_fn` is what SageMaker's
-  inference container calls.
+- `src/train.py` — sklearn example. Trains a `RandomForest`, writes the
+  bundle via `bundle.py`, exposes `model_fn(model_dir)`. Weights stored
+  as `model.joblib`.
+- `src/train_torch.py` — torch example. Trains an MLP, writes the *same*
+  bundle layout via `bundle.py`, exposes the *same* `model_fn(model_dir)`
+  shape. Weights stored as `model.safetensors`. Run standalone with
+  `python src/train_torch.py --train ./data --model-dir ./model_torch`
+  (install deps via `pip install -r requirements-torch.txt` first).
 
-To add a new framework, drop a parallel trainer (e.g.
-`src/train_torch.py`) that calls the same `bundle.save_config(...)` /
-`bundle.save_metadata(...)` and writes its weights with `safetensors`
-instead of `joblib`. The bundle layout is the contract; what each
-framework writes inside it is its own business.
+The two trainers prove the point: the `model_fn(model_dir) -> model`
+contract is identical across frameworks. The weights file format and the
+class definition differ; the bundle envelope and the loader signature do
+not. To add a new framework, drop another `src/train_<x>.py` that calls
+the same `bundle.save_config(...)` / `bundle.save_metadata(...)` and
+writes its weights with whatever format that framework prefers.
 
 ## Hyperparameters
 

@@ -6,4 +6,5 @@ __pycache__/
 .sb-test/
 output/
 model/
+model_torch/
 data/*.csv
