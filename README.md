@@ -71,21 +71,34 @@ The training script follows SageMaker conventions:
 
 ## Setup
 
-Requirements: Docker, Python 3.10+, ~1 GB free disk.
+Requirements: Docker, Python 3.10+, ~1 GB free disk. There's a Makefile
+covering all the common workflows; `make help` lists them.
 
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+make install              # base venv + main requirements
+# add any optional extras you want:
+make install-torch        # torch + safetensors
+make install-lightgbm     # LightGBM
+make install-skops        # safer-pickle for sklearn
+make install-feast        # Feast feature-store
+make install-bigquery     # google-cloud-bigquery
+make install-jupyter      # jupyterlab + ipykernel + matplotlib
+# or grab everything in one go:
+make install-all
 ```
+
+Equivalent without `make`: `python3 -m venv .venv && .venv/bin/pip
+install -r requirements.txt` plus any of the `requirements-*.txt`
+files you want.
 
 ## Running training
 
 Generate a dataset (pick one — each script wipes `data/` and writes one CSV):
 
 ```bash
-.venv/bin/python prepare_data.py    # iris (3-class, 150 rows)
+make data-iris      # iris (3-class, 150 rows)
 # or
-.venv/bin/python prepare_sonar.py   # Rocks vs Mines (binary, 208 rows)
+make data-sonar     # Rocks vs Mines (binary, 208 rows; also writes Feast parquets)
 ```
 
 `train.py` reads whichever CSV is in the train channel — no code changes
@@ -94,8 +107,7 @@ needed to swap datasets, as long as the CSV has a `target` column.
 ### BYOC (offline)
 
 ```bash
-docker build -t sage-baker-sklearn:latest .
-.venv/bin/python local_train.py
+make train-byoc     # builds the image if needed, runs local_train.py
 ```
 
 ### DLC (with AWS credentials)
@@ -112,7 +124,7 @@ Then before each session:
 ```bash
 aws sso login --profile your-profile
 export AWS_PROFILE=your-profile
-.venv/bin/python local_train_dlc.py
+make train-dlc
 ```
 
 (Long-lived `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` env vars still work
