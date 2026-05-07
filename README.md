@@ -586,6 +586,25 @@ the same dataset). Feast's `FileSource` is parquet-native, so we convert
 once at prep time. Keeps your data-import workflow identical and lets
 Feast do its job.
 
+### Inference: feature lookup by entity ID
+
+`local_serve.py` is Feast-aware. If the bundle's `config.json` records
+`feature_refs`, the script switches from "predict on raw rows" to
+"look up features online by entity ID":
+
+```bash
+.venv/bin/python local_serve.py --model-dir ./model_feast --signal-ids 0,50,100,200
+# → fetches f0..f59 for each signal_id from the SQLite online store,
+#   then predicts. Same model_fn, different feature source.
+```
+
+This is the realistic serving shape. Critically, **Feast can return
+None for features that aren't available** (TTL expired, not yet
+materialized, missing in source data). Whether the model handles those
+nulls gracefully is a *training-time* decision — train with realistic
+missingness via `get_historical_features` (point-in-time) and your
+inference path inherits the same null semantics.
+
 ### Feast on the DLC path
 
 `local_train_feast_dlc.py` ties Feast and the DLC together using the

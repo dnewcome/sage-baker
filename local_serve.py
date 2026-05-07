@@ -63,11 +63,37 @@ def warn_version_skew(model_dir):
               f"loading with {current} — pickle load may fail")
 
 
+def fetch_features_via_feast(cfg, signal_ids):
+    """Look up online features from Feast by entity ID.
+
+    This is the realistic serving shape for a feature-store-backed model:
+    callers pass an entity ID, the feature store provides the values.
+    The model never sees raw user input — it sees what Feast returns,
+    which is the same view the trainer used historically.
+
+    Critically, Feast can return None for missing values (TTL expired,
+    feature not yet materialized, etc.). The model has to handle that
+    gracefully — that's a *training-time* concern, not a serving-time
+    one. The right fix is to train with realistic missingness in the
+    historical join, not to paper over it here.
+    """
+    from feast import FeatureStore  # opt-in import
+    store = FeatureStore(repo_path=cfg["feature_repo"])
+    response = store.get_online_features(
+        features=cfg["feature_refs"],
+        entity_rows=[{"signal_id": sid} for sid in signal_ids],
+    ).to_dict()
+    feature_cols = [ref.split(":")[1] for ref in cfg["feature_refs"]]
+    return pd.DataFrame({c: response[c] for c in feature_cols})
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-dir", default="./model_sklearn",
                         help="path to a bundle directory (default: ./model_sklearn)")
     parser.add_argument("--artifact", help="path to model.tar.gz; if set, extracted to a temp dir")
+    parser.add_argument("--signal-ids", default="0,50,100,200",
+                        help="comma-separated signal_ids for Feast-backed bundles")
     args = parser.parse_args()
 
     if args.artifact:
@@ -95,14 +121,28 @@ def main():
     model = model_fn(model_dir)
     print(f"loaded: {type(model).__name__}")
 
-    df = pd.read_csv("data/sonar.csv")
-    X = df.drop(columns=["target"]).head(5).values.tolist()
-    y = df["target"].head(5).tolist()
-    predictions = model.predict(X).tolist()
+    # Dispatch on whether the bundle is Feast-backed. Feast bundles
+    # record `feature_refs` in config.json — that's the trigger to
+    # fetch features by entity ID instead of expecting raw values.
+    if cfg.get("feature_refs"):
+        signal_ids = [int(s) for s in args.signal_ids.split(",")]
+        print(f"feast-backed bundle — looking up features for signal_ids={signal_ids}")
+        X = fetch_features_via_feast(cfg, signal_ids)
+        print(f"got {X.shape[0]} rows × {X.shape[1]} cols from feast online store")
+        # cross-check predictions against ground truth from the labels file
+        labels = pd.read_parquet("feature_repo/data/sonar_labels.parquet")
+        y = labels.set_index("signal_id").loc[signal_ids, "target"].tolist()
+        predictions = model.predict(X).tolist()
+    else:
+        print("direct-features bundle — using sample rows from data/sonar.csv")
+        df = pd.read_csv("data/sonar.csv")
+        X = df.drop(columns=["target"]).head(5)
+        y = df["target"].head(5).tolist()
+        predictions = model.predict(X.values.tolist()).tolist()
 
     print(f"\n  actual:    {y}")
     print(f"  predicted: {predictions}")
-    print(f"  matches:   {sum(a == p for a, p in zip(y, predictions))} / {len(y)}")
+    print(f"  matches:   {sum(int(a) == int(p) for a, p in zip(y, predictions))} / {len(y)}")
 
 
 if __name__ == "__main__":
