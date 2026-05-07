@@ -985,6 +985,11 @@ import sys; sys.argv = ["train.py", "--train", "./data", "--model-dir", "./model
 train.main()
 ```
 
+There's a starter notebook at `notebooks/bigquery_exploration.ipynb`
+that demonstrates: setup, BQ via cell magic and direct client, training
+on the result, and inference — all in one place. Open it from the Lab
+file browser (kernel: **Python (sage-baker)**).
+
 A few patterns that pay off:
 
 - **`%load_ext autoreload; %autoreload 2`** — edit `src/train.py` and
