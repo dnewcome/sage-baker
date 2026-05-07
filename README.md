@@ -35,8 +35,9 @@ src/train_torch.py     torch training example — same bundle layout, safetensor
 src/train_lightgbm.py  LightGBM example — pickle-free native text format
 src/train_feast.py     sklearn trainer pulling features via Feast (point-in-time join)
 feature_repo/          Feast feature definitions (entities.py, features.py, store.yaml)
-prepare_data.py        writes data/iris.csv (toy multiclass dataset)
-prepare_sonar.py       writes data/sonar.csv + Feast parquets (Sonar Rocks vs Mines)
+prepare_data.py        writes data/iris.csv + lineage.json (toy multiclass dataset)
+prepare_sonar.py       writes data/sonar.csv + Feast parquets + lineage.json
+prepare_bigquery.py    materializes a BigQuery query to parquet + lineage.json
 local_train.py         BYOC driver — uses the local image, no AWS account
 local_train_dlc.py     DLC driver  — uses the AWS scikit-learn DLC image
 local_train_feast_dlc.py DLC + Feast — host-side feature retrieval, container trains
@@ -46,6 +47,7 @@ requirements-torch.txt opt-in extras for the torch example: torch, safetensors
 requirements-lightgbm.txt opt-in extras for the LightGBM example: lightgbm
 requirements-skops.txt    opt-in: skops (safer-pickle for sklearn)
 requirements-feast.txt opt-in extras for the Feast feature-store example
+requirements-bigquery.txt opt-in: google-cloud-bigquery + db-dtypes
 ```
 
 The training script lives in `src/` so the DLC's `source_dir` can point at a
@@ -623,6 +625,112 @@ Three changes when you move this to a SageMaker workflow:
 
 The trainer code itself doesn't change at all — that's what the feature
 store buys you.
+
+## Training data: warehouses, materialization, and lineage capture
+
+Training against data in a warehouse (BigQuery, Snowflake, Redshift)
+divides into three real concerns: **how to get it**, **how to keep
+your training run reproducible**, and **how to capture what you trained
+on so the model can be audited later**.
+
+### The pattern: materialize, then train
+
+```mermaid
+flowchart LR
+  WH[(BigQuery /<br/>Snowflake / etc.)]
+  PREP[prepare_bigquery.py<br/><i>SQL → parquet</i>]
+  PQ[data/training.parquet]
+  LIN[data/lineage.json<br/><i>query, snapshot_ts, sha256</i>]
+  TR[trainer]
+  BD([bundle/<br/>metadata.json includes data_lineage])
+
+  WH --> PREP --> PQ
+  PREP --> LIN
+  PQ --> TR
+  LIN -.->|"bundle.load_lineage embeds<br/>into metadata extras"| TR
+  TR --> BD
+```
+
+You *can* call `pandas.read_gbq("SELECT ...")` directly from your
+trainer and skip materialization. It works, but it's a reproducibility
+hazard — the warehouse is mutable, so re-running "the same query" days
+later doesn't necessarily get you the same data. Use direct querying
+for **exploration** (notebooks); materialize for any **registered
+training run**.
+
+### What lineage to capture
+
+For the model to point back at the data it saw, the bundle needs:
+
+| Field | Why |
+| ----- | --- |
+| `source` | warehouse name (bigquery/snowflake/url/sklearn/...) |
+| `query` | the exact SQL string |
+| `snapshot_timestamp` | for warehouses with time-travel (BQ's `FOR SYSTEM_TIME AS OF`, Snowflake's `AT(TIMESTAMP => ...)`), the anchor |
+| `dataset_sha256` | hash of the materialized parquet file — drift detector |
+| `dataset_n_rows` / `n_cols` | shape sanity check |
+
+`prepare_bigquery.py` writes all of these to `data/lineage.json`;
+`bundle.load_lineage()` reads it inside the trainer; the bundle's
+`metadata.json` ends up with a `data_lineage` block. Inspecting any
+trained model now answers "what did this train on?":
+
+```bash
+python src/train.py --train ./data --model-dir ./model_sklearn
+cat model_sklearn/metadata.json | jq .data_lineage
+# {
+#   "source": "url",
+#   "url": "https://...sonar.csv",
+#   "fetched_at": "2026-05-07T...",
+#   "dataset_sha256": "cf6f5dcf...",
+#   "dataset_n_rows": 208
+# }
+```
+
+The same metadata flows into MLflow as the run's logged metadata, so
+you can search/filter runs by dataset hash in the MLflow UI too.
+
+### BigQuery specifically
+
+```bash
+.venv/bin/pip install -r requirements-bigquery.txt
+gcloud auth application-default login
+
+# default query hits a public dataset (iris); replace with your own
+.venv/bin/python prepare_bigquery.py --project your-gcp-project
+.venv/bin/python src/train.py --train ./data --model-dir ./model_bq
+```
+
+To reproduce a past training run later: re-run the recorded
+`metadata.data_lineage.query` with `FOR SYSTEM_TIME AS OF
+'<snapshot_timestamp>'`, hash the result, verify it matches
+`dataset_sha256`. Within BQ's time-travel window (7 days default,
+longer with table snapshots) this is byte-for-byte exact.
+
+### Three levels of "freeze," in order of rigor
+
+1. **Hash + query in metadata** (what we do here). Cheap, sufficient
+   for most reproducibility needs. You can detect drift; you can
+   re-query within the warehouse's time-travel window.
+2. **Save the materialized parquet alongside the model.** Add
+   `tracking.log_artifacts("data/")` (or upload to S3 next to the
+   bundle). Now even if the warehouse table is dropped, the training
+   data survives. Costs storage.
+3. **Use a data-versioning system.** [DVC](https://dvc.org/) and
+   [LakeFS](https://lakefs.io/) treat datasets like git refs — the
+   bundle records a dataset commit SHA, and the dataset itself is
+   immutable until you delete it. Heaviest setup, strongest
+   guarantees. Worth it for audit/regulated workflows.
+
+### Other patterns worth knowing
+
+- **BigQuery ML** (`CREATE MODEL ... AS SELECT ...`): trains *inside*
+  BigQuery. Supported algorithms are limited (linear/logistic, k-means,
+  ARIMA, boosted trees, AutoML, can import TF/PyTorch for inference).
+  Useful if your team is SQL-first and the algorithms cover your case.
+- **BQ Storage API** (`google-cloud-bigquery-storage`): streams query
+  results in batches via Arrow for datasets that don't fit in memory.
+  Trade pandas convenience for scale.
 
 ## Hyperparameters
 

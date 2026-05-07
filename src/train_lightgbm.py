@@ -125,12 +125,16 @@ def main():
         # decoupled from this Python process's class definitions.
         booster.save_model(os.path.join(args.model_dir, WEIGHTS_FILE))
 
-        bundle.save_metadata(args.model_dir, extras={
+        extras = {
             "validation_accuracy": acc,
             "n_train": len(X_train),
             "n_test": len(X_test),
             "dataset_file": os.path.basename(path),
-        })
+        }
+        lineage = bundle.load_lineage(args.train)
+        if lineage:
+            extras["data_lineage"] = lineage
+        bundle.save_metadata(args.model_dir, extras=extras)
 
         tracking.log_bundle(args.model_dir)
         tracking.register_bundle_as_pyfunc(

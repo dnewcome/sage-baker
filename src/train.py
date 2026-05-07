@@ -114,12 +114,18 @@ def main():
         save_weights(clf, os.path.join(args.model_dir, weights_file))
 
         # metadata: provenance + metrics. Augments, never gates loading.
-        bundle.save_metadata(args.model_dir, extras={
+        # If the prepare-* script wrote a lineage.json, embed it so the
+        # bundle carries an audit trail back to the source data.
+        extras = {
             "validation_accuracy": acc,
             "n_train": len(X_train),
             "n_test": len(X_test),
             "dataset_file": os.path.basename(path),
-        })
+        }
+        lineage = bundle.load_lineage(args.train)
+        if lineage:
+            extras["data_lineage"] = lineage
+        bundle.save_metadata(args.model_dir, extras=extras)
 
         # log the bundle as opaque MLflow artifacts (no-op if disabled).
         tracking.log_bundle(args.model_dir)

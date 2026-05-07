@@ -9,7 +9,14 @@ Also writes Feast-friendly parquet versions with a synthetic
 event_timestamp + signal_id, split into a features file (the 60 sonar
 bands) and a labels file (the target). The trainers in src/ that don't
 use Feast still read data/sonar.csv.
+
+Drops a `data/lineage.json` recording the source URL, fetch timestamp,
+and sha256 of the resulting CSV — the trainers pick this up and embed
+it in the model bundle's metadata.json so every trained model carries
+an audit trail back to the data it was trained on.
 """
+import hashlib
+import json
 import os
 import shutil
 from datetime import datetime, timedelta, timezone
@@ -52,7 +59,21 @@ labels_df = df[["signal_id", "event_timestamp", "target"]]
 features_df.to_parquet(os.path.join(FEAST_DATA_DIR, "sonar_features.parquet"), index=False)
 labels_df.to_parquet(os.path.join(FEAST_DATA_DIR, "sonar_labels.parquet"), index=False)
 
+# lineage manifest — picked up by trainers and embedded in bundle metadata
+csv_path = os.path.join(DATA_DIR, "sonar.csv")
+data_hash = hashlib.sha256(open(csv_path, "rb").read()).hexdigest()
+lineage = {
+    "source": "url",
+    "url": URL,
+    "fetched_at": datetime.now(timezone.utc).isoformat(),
+    "dataset_sha256": data_hash,
+    "dataset_n_rows": len(df),
+}
+with open(os.path.join(DATA_DIR, "lineage.json"), "w") as f:
+    json.dump(lineage, f, indent=2)
+
 print(f"wrote {DATA_DIR}/sonar.csv ({len(df)} rows)")
 print(f"wrote {FEAST_DATA_DIR}/sonar_features.parquet (signal_id, event_timestamp, f0..f59)")
 print(f"wrote {FEAST_DATA_DIR}/sonar_labels.parquet (signal_id, event_timestamp, target)")
+print(f"wrote {DATA_DIR}/lineage.json (sha256: {data_hash[:16]}...)")
 print(f"  {(df['target'] == 0).sum()} rocks, {(df['target'] == 1).sum()} mines")

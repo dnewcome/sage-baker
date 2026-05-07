@@ -79,6 +79,20 @@ def load_metadata(model_dir):
         return json.load(f)
 
 
+def load_lineage(data_dir):
+    """Read a lineage.json sidecar written by a prepare-* script.
+
+    Trainers call this to pick up dataset provenance (source, query,
+    snapshot timestamp, sha256) and merge it into the model bundle's
+    metadata. None if the prepare script didn't write one.
+    """
+    path = os.path.join(data_dir, "lineage.json")
+    if not os.path.exists(path):
+        return None
+    with open(path) as f:
+        return json.load(f)
+
+
 def _git_sha():
     try:
         return subprocess.check_output(

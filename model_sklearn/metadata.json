@@ -1,9 +1,16 @@
 {
-  "saved_at": "2026-05-07T08:12:44.080765+00:00",
+  "saved_at": "2026-05-07T08:54:43.832354+00:00",
   "python": "3.12.9",
-  "git_sha": "7e1c730d2aaf704d6530f9b2f7dbb11f31560e3f",
+  "git_sha": "f3817951c539a3369ba6052de936471fc666b17a",
   "validation_accuracy": 0.7857142857142857,
   "n_train": 166,
   "n_test": 42,
-  "dataset_file": "sonar.csv"
+  "dataset_file": "sonar.csv",
+  "data_lineage": {
+    "source": "url",
+    "url": "https://raw.githubusercontent.com/jbrownlee/Datasets/master/sonar.csv",
+    "fetched_at": "2026-05-07T08:54:43.089682+00:00",
+    "dataset_sha256": "cf6f5dcf1fc37412b6dd2655dbc31d8e0aeaf5b1f1a3dec3fa42eabfde744a95",
+    "dataset_n_rows": 208
+  }
 }
