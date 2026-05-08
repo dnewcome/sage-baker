@@ -49,7 +49,10 @@ install-jupyter: ## Install Jupyter and register the project kernel
 	$(PIP) install -r requirements-jupyter.txt
 	$(PY) -m ipykernel install --user --name sage-baker --display-name "Python (sage-baker)"
 
-install-all: install install-torch install-lightgbm install-skops install-feast install-bigquery install-jupyter ## Install everything
+install-recommender: ## Install recommender extras (implicit, scipy, pyarrow)
+	$(PIP) install -r requirements-recommender.txt
+
+install-all: install install-torch install-lightgbm install-skops install-feast install-bigquery install-recommender install-jupyter ## Install everything
 
 # ---------- data prep ---------------------------------------------------
 
@@ -58,6 +61,9 @@ data-iris: ## Prepare iris dataset (sklearn-bundled, 3-class)
 
 data-sonar: ## Prepare sonar dataset + Feast parquets (binary)
 	$(PY) prepare_sonar.py
+
+data-als: ## Prepare synthetic ALS dataset (generic user × item interactions)
+	$(PY) prepare.py --plugin als
 
 data-bigquery: ## Materialize a BigQuery query (default: public iris dataset)
 	$(PY) prepare_bigquery.py
@@ -71,8 +77,11 @@ bq-data-sonar: ## Materialize the sonar table back from BQ (after bq-upload-sona
 
 # ---------- training (host-side) ---------------------------------------
 
-train: ## Host-side sklearn (RandomForest) training
+train: ## Host-side training (default plugin: RandomForest)
 	$(PY) src/train.py --train $(DATA_DIR) --model-dir $(MODEL_DIR)
+
+train-als: ## Host-side ALS training (run data-als + install-recommender first)
+	$(PY) src/train_recommender.py --train $(DATA_DIR) --model-dir ./model_als --plugin als
 
 train-torch: ## Host-side torch (MLP) training
 	$(PY) src/train_torch.py --train $(DATA_DIR) --model-dir ./model_torch
@@ -127,9 +136,12 @@ feast-apply: ## Register Feast entity/view + materialize features online
 clean: ## Remove scratch dirs (keeps venv, MLflow data, Feast registry)
 	rm -rf .sm-scratch model_*/ materialized/
 
-.PHONY: help install install-torch install-lightgbm install-skops install-feast install-bigquery install-jupyter install-all
-.PHONY: data-iris data-sonar data-bigquery bq-upload-sonar bq-data-sonar
-.PHONY: train train-torch train-lightgbm train-feast
+.PHONY: help install install-torch install-lightgbm install-skops install-feast install-bigquery install-recommender install-jupyter install-all
+.PHONY: data-iris data-sonar data-als data-bigquery bq-upload-sonar bq-data-sonar
+.PHONY: train train-als train-torch train-lightgbm train-feast
 .PHONY: image train-byoc train-dlc train-feast-dlc
 .PHONY: serve mlflow-serve demo-categorical
 .PHONY: mlflow-server jupyter feast-apply clean
+
+# Private plugin targets (gitignored; Button-specific).
+-include Makefile.private

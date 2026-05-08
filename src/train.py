@@ -9,15 +9,20 @@ import argparse
 import glob
 import json
 import os
+import sys
 import joblib
 import pandas as pd
 import sklearn
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 
 import bundle
 import tracking
+
+# Allow `import plugins` when running as a script from the src/ dir or via
+# SageMaker's entry_point mechanism (which adds src/ to sys.path).
+sys.path.insert(0, os.path.dirname(__file__))
+from plugins import get_plugin, list_plugins
 
 HP_PATH = "/opt/ml/input/config/hyperparameters.json"
 
@@ -62,8 +67,21 @@ def main():
     parser.add_argument("--weights-format", choices=list(WEIGHTS_FORMATS),
                         default=hp.get("weights-format", "joblib"),
                         help="how to serialize the trained model (joblib or skops)")
+    parser.add_argument("--plugin", type=str,
+                        default=hp.get("plugin", "default"),
+                        help=f"training plugin (metric module). available: {list_plugins()}")
     args, _ = parser.parse_known_args()
     weights_file, save_weights, _ = WEIGHTS_FORMATS[args.weights_format]
+
+    plugin = get_plugin(args.plugin)
+    print(f"plugin: {plugin.name}")
+
+    # Unified params dict passed to plugin.build_model().
+    # Keys are normalized to underscores (SageMaker uses hyphens in hp.json).
+    # CLI flags for n_estimators / max_depth override hp.json values.
+    params = {k.replace("-", "_"): str(v) for k, v in hp.items()}
+    params["n_estimators"] = str(args.n_estimators)
+    params["max_depth"] = str(args.max_depth)
 
     os.makedirs(args.model_dir, exist_ok=True)
 
@@ -74,20 +92,15 @@ def main():
     path = files[0]
     df = pd.read_parquet(path) if path.endswith(".parquet") else pd.read_csv(path)
     print(f"loaded {path}: {len(df)} rows, {len(df.columns)} columns")
-    # drop bookkeeping columns Feast adds (entity + timestamp) if present
-    feature_cols = [c for c in df.columns if c not in {"target", "signal_id", "event_timestamp"}]
-    X = df[feature_cols]
-    # Cast to plain int so sklearn doesn't promote classes_ to float when
-    # `target` arrives as pandas nullable Int64 (e.g. from BigQuery).
-    y = df["target"].astype(int)
+
+    X, y = plugin.prepare(df)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    run_params = {"n-estimators": args.n_estimators, "max-depth": args.max_depth,
-                  "dataset_file": os.path.basename(path)}
-    with tracking.mlflow_run(run_name="sklearn-rf", params=run_params,
-                             tags={"framework": "sklearn"}):
-        clf = RandomForestClassifier(n_estimators=args.n_estimators,
-                                     max_depth=args.max_depth, random_state=42)
+    clf = plugin.build_model(params)
+    run_params = {**params, "plugin": plugin.name, "dataset_file": os.path.basename(path)}
+    with tracking.mlflow_run(run_name=f"{plugin.name}-train", params=run_params,
+                             tags={"framework": type(clf).__module__.split(".")[0],
+                                   "plugin": plugin.name}):
         clf.fit(X_train, y_train)
 
         acc = accuracy_score(y_test, clf.predict(X_test))
@@ -98,7 +111,8 @@ def main():
         # config.json: how to rebuild the model. For sklearn the "code" is
         # the sklearn library itself, so we just need the estimator class
         # name, its init params, and the feature schema.
-        bundle.save_config(args.model_dir, {
+        config = {
+            "plugin": plugin.name,
             "framework": "sklearn",
             "framework_version": sklearn.__version__,
             "estimator": type(clf).__name__,
@@ -108,7 +122,9 @@ def main():
             "weights_format": args.weights_format,
             "feature_names": list(X.columns),
             "classes": [int(c) if hasattr(c, "item") else c for c in clf.classes_.tolist()],
-        })
+        }
+        config.update(plugin.extra_config(clf, X))
+        bundle.save_config(args.model_dir, config)
 
         # weights: dispatched by --weights-format. joblib (pickle) is
         # canonical; skops is a safer-pickle drop-in (allowlist of

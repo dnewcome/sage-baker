@@ -25,6 +25,10 @@ mlruns/
 feature_repo/data/*.parquet
 feature_repo/data/*.db
 
+# Private plugins — company-specific; never in the public repo
+src/plugins/private/
+Makefile.private
+
 # Credentials / secrets — never commit
 *-key.json
 *-credentials.json
