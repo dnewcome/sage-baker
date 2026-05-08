@@ -36,6 +36,22 @@ from pathlib import Path
 ANTHROPIC_MODEL = "claude-sonnet-4-6"  # cheap-ish, fast, capable enough
 
 
+def load_dotenv(path=".env"):
+    """Best-effort .env loader — same shape Make uses (`-include .env`).
+
+    Allows `python agent.py` to work without `make` in front. Doesn't
+    override variables already set in the environment.
+    """
+    if not os.path.exists(path):
+        return
+    for raw in open(path):
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        os.environ.setdefault(key.strip(), value.strip().strip("'\""))
+
+
 def read(path):
     return Path(path).read_text()
 
@@ -120,6 +136,7 @@ def main():
                    help="wall-clock cap (default 30 min)")
     args = p.parse_args()
 
+    load_dotenv()  # so `python agent.py` works without `make` in front
     if not os.environ.get("ANTHROPIC_API_KEY"):
         sys.exit("ANTHROPIC_API_KEY not set — add to .env first")
     try:
