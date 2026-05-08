@@ -20,7 +20,7 @@ MLFLOW_URI ?= http://127.0.0.1:5000
 help: ## Show available targets
 	@echo "Usage: make <target>    (override vars: MODEL_DIR=, DATA_DIR=, MLFLOW_URI=)"
 	@echo ""
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
+	@grep -hE '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}'
 
 # ---------- setup -------------------------------------------------------
@@ -52,7 +52,10 @@ install-jupyter: ## Install Jupyter and register the project kernel
 install-recommender: ## Install recommender extras (implicit, scipy, pyarrow)
 	$(PIP) install -r requirements-recommender.txt
 
-install-all: install install-torch install-lightgbm install-skops install-feast install-bigquery install-recommender install-jupyter ## Install everything
+install-agent: ## Install autoresearch-style agent extras (anthropic SDK)
+	$(PIP) install -r requirements-agent.txt
+
+install-all: install install-torch install-lightgbm install-skops install-feast install-bigquery install-recommender install-agent install-jupyter ## Install everything
 
 # ---------- data prep ---------------------------------------------------
 
@@ -117,6 +120,9 @@ mlflow-serve: ## Load model via MLflow Model Registry
 demo-categorical: ## Demo: 'new enum value at inference' bug + 3 fixes
 	$(PY) demo_categorical.py
 
+agent: ## autoresearch-style agent loop — edits src/plugins/default.py iteratively
+	$(PY) agent.py
+
 # ---------- infrastructure (long-running processes) --------------------
 
 mlflow-server: ## Start MLflow tracking server (foreground; Ctrl-C to stop)
@@ -136,11 +142,11 @@ feast-apply: ## Register Feast entity/view + materialize features online
 clean: ## Remove scratch dirs (keeps venv, MLflow data, Feast registry)
 	rm -rf .sm-scratch model_*/ materialized/
 
-.PHONY: help install install-torch install-lightgbm install-skops install-feast install-bigquery install-recommender install-jupyter install-all
+.PHONY: help install install-torch install-lightgbm install-skops install-feast install-bigquery install-recommender install-agent install-jupyter install-all
 .PHONY: data-iris data-sonar data-als data-bigquery bq-upload-sonar bq-data-sonar
 .PHONY: train train-als train-torch train-lightgbm train-feast
 .PHONY: image train-byoc train-dlc train-feast-dlc
-.PHONY: serve mlflow-serve demo-categorical
+.PHONY: serve mlflow-serve demo-categorical agent
 .PHONY: mlflow-server jupyter feast-apply clean
 
 # Private plugin targets (gitignored; company-specific).

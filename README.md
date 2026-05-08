@@ -39,6 +39,8 @@ prepare_data.py        writes data/iris.csv + lineage.json (toy multiclass datas
 prepare_sonar.py       writes data/sonar.csv + Feast parquets + lineage.json
 prepare_bigquery.py    materializes a BigQuery query to parquet + lineage.json
 demo_categorical.py    runnable demo of "new enum value at inference" bug + 3 fixes
+agent.py               autoresearch-style agent loop — edits a plugin iteratively
+program.md             human-edited prompt + constraints driving agent.py
 local_train.py         BYOC driver — uses the local image, no AWS account
 local_train_dlc.py     DLC driver  — uses the AWS scikit-learn DLC image
 local_train_feast_dlc.py DLC + Feast — host-side feature retrieval, container trains
@@ -53,6 +55,7 @@ requirements-skops.txt    opt-in: skops (safer-pickle for sklearn)
 requirements-feast.txt opt-in extras for the Feast feature-store example
 requirements-bigquery.txt opt-in: google-cloud-bigquery + db-dtypes
 requirements-jupyter.txt  opt-in: jupyterlab + ipykernel + matplotlib + seaborn
+requirements-agent.txt    opt-in: anthropic SDK for the autoresearch-style agent
 ```
 
 The training script lives in `src/` so the DLC's `source_dir` can point at a
@@ -1030,6 +1033,55 @@ notebook-specific about them, and nothing in the repo expects to be
 run from one place. The same `model_fn(model_dir)` works from a
 notebook, from `local_serve.py`, from MLflow's PyFunc, and from
 SageMaker.
+
+## Autoresearch-style agent loop
+
+`agent.py` is a small autonomous loop, inspired by
+[karpathy/autoresearch](https://github.com/karpathy/autoresearch),
+that iteratively improves a plugin by editing it with an LLM, running
+training, and keeping changes that improve `validation_accuracy`.
+
+```mermaid
+flowchart LR
+  PROG[program.md<br/><i>human-edited prompt</i>]
+  AGENT[agent.py<br/>+ Claude]
+  PLUGIN[src/plugins/default.py<br/><i>agent-edited</i>]
+  TRAIN[make train]
+  REVERT[git checkout --]
+
+  PROG --> AGENT
+  AGENT -->|propose new file| PLUGIN
+  PLUGIN --> TRAIN
+  TRAIN -->|metric > best?| AGENT
+  AGENT -->|if worse| REVERT --> PLUGIN
+```
+
+The structure mirrors autoresearch's three files (`prepare.py` /
+`train.py` / `program.md`) but built on top of this repo's plugin
+system, so the agent edits a small focused file (`src/plugins/default.py`)
+rather than the whole trainer. Cheap iteration on small data is what
+makes this practical — sub-second training on sonar means an overnight
+run can do hundreds of experiments.
+
+```bash
+make install-agent          # one-time: pip install anthropic
+make data-sonar             # one-time: prepare data
+echo 'ANTHROPIC_API_KEY=sk-ant-...' >> .env
+
+make agent                                   # default: 20 iters, 30 min budget
+.venv/bin/python agent.py --max-iterations 5    # short test run
+.venv/bin/python agent.py --plugin src/plugins/some_other_plugin.py
+```
+
+Constraints + strategy hints live in `program.md` — edit that, not
+the agent code, to change what the agent's allowed to do or how it
+should approach the problem. The agent reverts proposals that fail
+syntax check, training failure, or a worse metric — so by design the
+working tree only ever moves forward in metric.
+
+If `MLFLOW_TRACKING_URI` is set, every run is also logged to MLflow
+(via the trainer's existing `tracking.py`), so you wake up to a
+searchable history of experiments alongside the final improved plugin.
 
 ## Productionizing on SageMaker
 
