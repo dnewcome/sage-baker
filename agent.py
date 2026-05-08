@@ -93,10 +93,23 @@ def strip_fences(text):
 
 
 def propose(client, program, plugin_path, plugin_src, history, best):
-    history_summary = "\n".join(
-        f"  iter {i + 1}: {m:.4f} ({'kept' if kept else 'reverted'})"
-        for i, (_, m, kept) in enumerate(history[-5:])
-    ) or "  (none yet — this is iteration 1)"
+    """Ask the model for a new plugin version.
+
+    History is summarized with a short hash of each prior proposal so
+    the model can see when it's been retreading and avoid it. Without
+    this, the trainer's fixed random_state means semantically-identical
+    proposals produce byte-identical metrics, which looks like 'the
+    agent isn't doing anything'.
+    """
+    if history:
+        lines = [
+            f"  iter {i + 1}: metric={m:.4f} ({'kept' if kept else 'reverted'}) "
+            f"proposal_hash={src_hash(snap)}"
+            for i, (snap, m, kept) in enumerate(history[-5:])
+        ]
+        history_summary = "\n".join(lines)
+    else:
+        history_summary = "  (none yet — this is iteration 1)"
 
     best_str = f"{best:.4f}" if best > -float("inf") else "no successful runs yet"
 
@@ -112,6 +125,20 @@ def propose(client, program, plugin_path, plugin_src, history, best):
 
 # Best metric so far: {best_str}
 
+# Mandatory constraints
+
+1. The trainer is fully deterministic given the plugin source —
+   `train_test_split(random_state=42)` and any `random_state=42` in
+   the model. So two byte-identical proposals would produce the
+   identical metric. **Your proposal MUST be a meaningfully different
+   plugin** (different estimator, different hyperparameters, or
+   different feature engineering) than the current one shown above.
+2. **Do not propose a plugin you've already tried.** Compare your
+   intended change against the proposal_hash list above; if you would
+   end up with one of those, propose something else.
+3. The harness measures success by the metric line `validation_<name>=`
+   in stdout — change something the metric will actually respond to.
+
 Output a COMPLETE new version of the plugin file. Plain Python source.
 No markdown fences, no commentary, no diff format — just the file."""
 
@@ -121,6 +148,12 @@ No markdown fences, no commentary, no diff format — just the file."""
         messages=[{"role": "user", "content": prompt}],
     )
     return strip_fences(msg.content[0].text)
+
+
+def src_hash(text):
+    """Short stable hash for showing to the LLM (de-dup history)."""
+    import hashlib
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]
 
 
 def main():
@@ -172,7 +205,14 @@ def main():
             history.append((proposal, -1.0, False))
             continue
 
+        if proposal.strip() == plugin_src.strip():
+            print("  proposal is byte-identical to current plugin "
+                  "(LLM didn't actually change anything); skipping training")
+            history.append((proposal, -1.0, False))
+            continue
+
         write(args.plugin, proposal)
+        print(f"  wrote new plugin (hash={src_hash(proposal)})")
 
         result = subprocess.run(
             ["make", "train"], capture_output=True, text=True, env=os.environ.copy()
