@@ -102,9 +102,12 @@ def main():
                                    "plugin": plugin.name}):
         clf.fit(X_train, y_train)
 
-        # The plugin owns the metric — accuracy for classification, R²
-        # for regression by default. Higher is better, by convention.
-        metric_name, metric_value = plugin.evaluate(y_test, clf.predict(X_test))
+        # The plugin owns the metric — accuracy / ROC-AUC for
+        # classification, R² for regression by default. Higher is
+        # better, by convention. The plugin gets the model itself so
+        # it can use predict_proba when probability-based metrics
+        # (AUC, log-loss) give it more granular signal.
+        metric_name, metric_value = plugin.evaluate(clf, X_test, y_test)
         print(f"{metric_name}={metric_value:.4f}")
         tracking.log_metrics({metric_name: metric_value})
 

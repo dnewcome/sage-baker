@@ -41,7 +41,7 @@ class TrainingPlugin:
         """
         raise NotImplementedError
 
-    def evaluate(self, y_true, y_pred) -> tuple:
+    def evaluate(self, model, X_test, y_true) -> tuple:
         """Return ``(metric_name, value)`` for the held-out predictions.
 
         Higher-is-better convention — the harness, evaluate.py, agent.py
@@ -50,11 +50,17 @@ class TrainingPlugin:
         by 1, comparable across datasets); accuracy is the classification
         default.
 
-        Override in subclasses to use a different metric. The chosen name
+        Receives the fitted model and the test features so subclasses
+        can use ``predict_proba`` for continuous metrics like ROC-AUC
+        (which gives the agent a much finer-grained signal than
+        accuracy on small test sets).
+
+        Override in subclasses for different metrics. The chosen name
         becomes the field name in metadata.json + the stdout log line
         (``validation_<name>=…``).
         """
         from sklearn.metrics import accuracy_score, r2_score
+        y_pred = model.predict(X_test)
         if self.task == "regression":
             return "validation_r2", float(r2_score(y_true, y_pred))
         return "validation_accuracy", float(accuracy_score(y_true, y_pred))
