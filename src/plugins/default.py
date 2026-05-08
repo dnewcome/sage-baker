@@ -15,6 +15,7 @@ _SKIP = {"target", "signal_id", "event_timestamp"}
 
 class DefaultPlugin(TrainingPlugin):
     name = "default"
+    task = "classification"
 
     def prepare(self, df: pd.DataFrame):
         feature_cols = [c for c in df.columns if c not in _SKIP]

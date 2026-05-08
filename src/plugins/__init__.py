@@ -32,9 +32,11 @@ from .als import ALSPlugin
 from .base import TrainingPlugin
 from .base_recommender import InteractionData, RecommenderPlugin
 from .default import DefaultPlugin
+from .housing import HousingPlugin
 
 _SUPERVISED_PLUGINS: list[type[TrainingPlugin]] = [
     DefaultPlugin,
+    HousingPlugin,
 ]
 
 _RECOMMENDER_PLUGINS: list[type[RecommenderPlugin]] = [

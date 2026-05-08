@@ -37,10 +37,12 @@ src/train_feast.py     sklearn trainer pulling features via Feast (point-in-time
 feature_repo/          Feast feature definitions (entities.py, features.py, store.yaml)
 prepare_data.py        writes data/iris.csv + lineage.json (toy multiclass dataset)
 prepare_sonar.py       writes data/sonar.csv + Feast parquets + lineage.json
+prepare.py             plugin-aware prep dispatcher (`--plugin housing` etc.)
 prepare_bigquery.py    materializes a BigQuery query to parquet + lineage.json
 demo_categorical.py    runnable demo of "new enum value at inference" bug + 3 fixes
 agent.py               autoresearch-style agent loop — edits a plugin iteratively
-program.md             human-edited prompt + constraints driving agent.py
+program.md             agent prompt for the classification baseline (sonar)
+program_regression.md  agent prompt for the regression baseline (housing)
 local_train.py         BYOC driver — uses the local image, no AWS account
 local_train_dlc.py     DLC driver  — uses the AWS scikit-learn DLC image
 local_train_feast_dlc.py DLC + Feast — host-side feature retrieval, container trains

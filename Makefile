@@ -68,6 +68,9 @@ data-sonar: ## Prepare sonar dataset + Feast parquets (binary)
 data-als: ## Prepare synthetic ALS dataset (generic user × item interactions)
 	$(PY) prepare.py --plugin als
 
+data-housing: ## Prepare California housing (sklearn-bundled, regression)
+	$(PY) prepare.py --plugin housing
+
 data-bigquery: ## Materialize a BigQuery query (default: public iris dataset)
 	$(PY) prepare_bigquery.py
 
@@ -85,6 +88,9 @@ train: ## Host-side training (default plugin: RandomForest)
 
 train-als: ## Host-side ALS training (run data-als + install-recommender first)
 	$(PY) src/train_recommender.py --train $(DATA_DIR) --model-dir ./model_als --plugin als
+
+train-housing: ## Host-side regression on California housing (R² metric)
+	$(PY) src/train.py --train $(DATA_DIR) --model-dir ./model_housing --plugin housing
 
 train-torch: ## Host-side torch (MLP) training
 	$(PY) src/train_torch.py --train $(DATA_DIR) --model-dir ./model_torch
@@ -143,8 +149,8 @@ clean: ## Remove scratch dirs (keeps venv, MLflow data, Feast registry)
 	rm -rf .sm-scratch model_*/ materialized/
 
 .PHONY: help install install-torch install-lightgbm install-skops install-feast install-bigquery install-recommender install-agent install-jupyter install-all
-.PHONY: data-iris data-sonar data-als data-bigquery bq-upload-sonar bq-data-sonar
-.PHONY: train train-als train-torch train-lightgbm train-feast
+.PHONY: data-iris data-sonar data-als data-housing data-bigquery bq-upload-sonar bq-data-sonar
+.PHONY: train train-als train-housing train-torch train-lightgbm train-feast
 .PHONY: image train-byoc train-dlc train-feast-dlc
 .PHONY: serve mlflow-serve demo-categorical agent
 .PHONY: mlflow-server jupyter feast-apply clean

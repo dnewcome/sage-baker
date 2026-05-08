@@ -56,9 +56,16 @@ def syntax_ok(source):
         return False
 
 
-def parse_metric(stdout, metric_name):
-    m = re.search(rf"{metric_name}=([\d.]+)", stdout)
-    return float(m.group(1)) if m else None
+def parse_metric(stdout, metric_name=None):
+    """Parse the trainer's last `validation_<name>=<float>` line.
+
+    If metric_name is given, look for that specific name. Otherwise find
+    any validation_<name>=… (so the agent works for either classification
+    or regression without configuration). Higher-is-better convention.
+    """
+    pattern = rf"{metric_name}=([\d.]+)" if metric_name else r"validation_\w+=([\d.]+)"
+    matches = re.findall(pattern, stdout)
+    return float(matches[-1]) if matches else None
 
 
 def strip_fences(text):
@@ -106,7 +113,8 @@ def main():
                    help="file the agent is allowed to edit")
     p.add_argument("--program", default="program.md",
                    help="prompt with constraints + strategy hints")
-    p.add_argument("--metric", default="validation_accuracy")
+    p.add_argument("--metric", default=None,
+                   help="metric name to track (default: any validation_<name>=…)")
     p.add_argument("--max-iterations", type=int, default=20)
     p.add_argument("--budget-seconds", type=int, default=1800,
                    help="wall-clock cap (default 30 min)")

@@ -32,11 +32,15 @@ import tempfile
 from pathlib import Path
 
 import joblib
+import numpy as np
 import pandas as pd
 from sklearn.metrics import (
     accuracy_score,
     classification_report,
+    mean_absolute_error,
+    mean_squared_error,
     precision_recall_fscore_support,
+    r2_score,
 )
 
 
@@ -94,6 +98,11 @@ def main():
     print(f"bundle dir: {bundle_dir}")
     print(f"  contents: {sorted(os.listdir(bundle_dir))}")
 
+    with open(os.path.join(bundle_dir, "config.json")) as f:
+        cfg = json.load(f)
+    task = cfg.get("task", "classification")
+    print(f"  task: {task}")
+
     model = load_model(bundle_dir)
     print(f"  loaded: {type(model).__name__}")
 
@@ -105,16 +114,33 @@ def main():
     feature_cols = [c for c in df.columns
                     if c not in {"target", "signal_id", "event_timestamp"}]
     X = df[feature_cols]
-    y_true = df["target"].astype(int)
-    y_pred = model.predict(X)
 
+    if task == "regression":
+        y_true = df["target"].astype(float)
+        y_pred = model.predict(X)
+        metrics = compute_regression_metrics(y_true, y_pred)
+        print(f"\nmetrics:\n{json.dumps(metrics, indent=2)}")
+    else:
+        y_true = df["target"].astype(int)
+        y_pred = model.predict(X)
+        metrics = compute_classification_metrics(y_true, y_pred)
+        print(f"\nmetrics:\n{json.dumps(metrics, indent=2)}")
+        print(f"\nclassification report:\n{classification_report(y_true, y_pred, zero_division=0)}")
+
+    Path(args.output).mkdir(parents=True, exist_ok=True)
+    out_path = os.path.join(args.output, "metrics.json")
+    with open(out_path, "w") as f:
+        json.dump(metrics, f, indent=2)
+    print(f"wrote {out_path}")
+
+
+def compute_classification_metrics(y_true, y_pred):
     accuracy = float(accuracy_score(y_true, y_pred))
     avg = "binary" if y_true.nunique() == 2 else "macro"
     precision, recall, f1, _ = precision_recall_fscore_support(
         y_true, y_pred, average=avg, zero_division=0
     )
-
-    metrics = {
+    return {
         "validation_accuracy": accuracy,
         "precision": float(precision),
         "recall": float(recall),
@@ -124,14 +150,17 @@ def main():
         "classes": sorted(int(c) for c in y_true.unique()),
     }
 
-    print(f"\nmetrics:\n{json.dumps(metrics, indent=2)}")
-    print(f"\nclassification report:\n{classification_report(y_true, y_pred, zero_division=0)}")
 
-    Path(args.output).mkdir(parents=True, exist_ok=True)
-    out_path = os.path.join(args.output, "metrics.json")
-    with open(out_path, "w") as f:
-        json.dump(metrics, f, indent=2)
-    print(f"wrote {out_path}")
+def compute_regression_metrics(y_true, y_pred):
+    rmse = float(np.sqrt(mean_squared_error(y_true, y_pred)))
+    return {
+        "validation_r2": float(r2_score(y_true, y_pred)),
+        "rmse": rmse,
+        "mae": float(mean_absolute_error(y_true, y_pred)),
+        "target_mean": float(y_true.mean()),
+        "target_std": float(y_true.std()),
+        "n_test": int(len(y_true)),
+    }
 
 
 if __name__ == "__main__":

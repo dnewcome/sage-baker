@@ -13,7 +13,6 @@ import sys
 import joblib
 import pandas as pd
 import sklearn
-from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 
 import bundle
@@ -22,7 +21,7 @@ import tracking
 # Allow `import plugins` when running as a script from the src/ dir or via
 # SageMaker's entry_point mechanism (which adds src/ to sys.path).
 sys.path.insert(0, os.path.dirname(__file__))
-from plugins import get_plugin, list_plugins
+from plugins import get_plugin, list_plugins  # noqa: E402
 
 HP_PATH = "/opt/ml/input/config/hyperparameters.json"
 
@@ -103,9 +102,11 @@ def main():
                                    "plugin": plugin.name}):
         clf.fit(X_train, y_train)
 
-        acc = accuracy_score(y_test, clf.predict(X_test))
-        print(f"validation_accuracy={acc:.4f}")
-        tracking.log_metrics({"validation_accuracy": acc})
+        # The plugin owns the metric — accuracy for classification, R²
+        # for regression by default. Higher is better, by convention.
+        metric_name, metric_value = plugin.evaluate(y_test, clf.predict(X_test))
+        print(f"{metric_name}={metric_value:.4f}")
+        tracking.log_metrics({metric_name: metric_value})
 
         # --- write the standard model bundle -----------------------------
         # config.json: how to rebuild the model. For sklearn the "code" is
@@ -113,6 +114,7 @@ def main():
         # name, its init params, and the feature schema.
         config = {
             "plugin": plugin.name,
+            "task": plugin.task,
             "framework": "sklearn",
             "framework_version": sklearn.__version__,
             "estimator": type(clf).__name__,
@@ -121,8 +123,14 @@ def main():
             "weights_file": weights_file,
             "weights_format": args.weights_format,
             "feature_names": list(X.columns),
-            "classes": [int(c) if hasattr(c, "item") else c for c in clf.classes_.tolist()],
+            "metric_name": metric_name,
         }
+        # `classes_` only exists on classifiers — preserve the existing
+        # field there but skip it for regressors.
+        if hasattr(clf, "classes_"):
+            config["classes"] = [
+                int(c) if hasattr(c, "item") else c for c in clf.classes_.tolist()
+            ]
         config.update(plugin.extra_config(clf, X))
         bundle.save_config(args.model_dir, config)
 
@@ -135,7 +143,7 @@ def main():
         # If the prepare-* script wrote a lineage.json, embed it so the
         # bundle carries an audit trail back to the source data.
         extras = {
-            "validation_accuracy": acc,
+            metric_name: metric_value,
             "n_train": len(X_train),
             "n_test": len(X_test),
             "dataset_file": os.path.basename(path),

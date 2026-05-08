@@ -121,6 +121,9 @@ def main():
     model = model_fn(model_dir)
     print(f"loaded: {type(model).__name__}")
 
+    task = cfg.get("task", "classification")
+    print(f"task: {task}")
+
     # Dispatch on whether the bundle is Feast-backed. Feast bundles
     # record `feature_refs` in config.json — that's the trigger to
     # fetch features by entity ID instead of expecting raw values.
@@ -129,20 +132,32 @@ def main():
         print(f"feast-backed bundle — looking up features for signal_ids={signal_ids}")
         X = fetch_features_via_feast(cfg, signal_ids)
         print(f"got {X.shape[0]} rows × {X.shape[1]} cols from feast online store")
-        # cross-check predictions against ground truth from the labels file
         labels = pd.read_parquet("feature_repo/data/sonar_labels.parquet")
         y = labels.set_index("signal_id").loc[signal_ids, "target"].tolist()
         predictions = model.predict(X).tolist()
     else:
-        print("direct-features bundle — using sample rows from data/sonar.csv")
-        df = pd.read_csv("data/sonar.csv")
+        # find a sample CSV in data/ — works for sonar, california, iris alike
+        import glob
+        sample_csv = next(iter(sorted(glob.glob("data/*.csv"))), None)
+        if not sample_csv:
+            sys.exit("no data/*.csv to score against — run a `make data-*` target first")
+        print(f"direct-features bundle — using first 5 rows from {sample_csv}")
+        df = pd.read_csv(sample_csv)
         X = df.drop(columns=["target"]).head(5)
         y = df["target"].head(5).tolist()
         predictions = model.predict(X.values.tolist()).tolist()
 
-    print(f"\n  actual:    {y}")
-    print(f"  predicted: {predictions}")
-    print(f"  matches:   {sum(int(a) == int(p) for a, p in zip(y, predictions))} / {len(y)}")
+    if task == "regression":
+        print(f"\n  actual:     {[round(v, 4) for v in y]}")
+        print(f"  predicted:  {[round(v, 4) for v in predictions]}")
+        residuals = [round(p - a, 4) for a, p in zip(y, predictions)]
+        print(f"  residuals:  {residuals}")
+        mae = sum(abs(r) for r in residuals) / len(residuals)
+        print(f"  mean |residual|: {mae:.4f}")
+    else:
+        print(f"\n  actual:    {y}")
+        print(f"  predicted: {predictions}")
+        print(f"  matches:   {sum(int(a) == int(p) for a, p in zip(y, predictions))} / {len(y)}")
 
 
 if __name__ == "__main__":

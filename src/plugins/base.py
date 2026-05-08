@@ -1,14 +1,21 @@
-"""Base class for metric-specific training plugins.
+"""Base class for task-specific training plugins.
 
-Adding a new metric
+Adding a new plugin
 -------------------
-1. Create ``src/plugins/<metric>.py`` with a subclass of TrainingPlugin.
+1. Create ``src/plugins/<plugin>.py`` with a subclass of TrainingPlugin.
 2. Register it in ``src/plugins/__init__.py``.
 
 The generic harness (``src/train.py``) handles everything outside the plugin
 contract: data loading, train/test split, bundle serialization, MLflow
-tracking. The plugin owns feature engineering, the model class, and its
-hyperparameter defaults.
+tracking. The plugin owns feature engineering, the model class, the
+hyperparameter defaults, and the validation metric.
+
+Tasks
+-----
+A plugin declares its task via ``task = "classification"`` (default) or
+``task = "regression"``. The default ``evaluate()`` method picks an
+accuracy metric for classification; regression plugins override to return
+R² (or any other higher-is-better metric of their choice).
 """
 import pandas as pd
 
@@ -16,19 +23,41 @@ import pandas as pd
 class TrainingPlugin:
     # Override in every subclass.
     name: str = "base"
+    # Either "classification" or "regression". Drives default metric
+    # choice and downstream dispatch in evaluate.py / local_serve.py.
+    task: str = "classification"
 
     def prepare(self, df: pd.DataFrame) -> tuple:
         """Feature engineering + target extraction.
 
         Receives the raw DataFrame loaded from the train channel
         (CSV or parquet). Returns ``(X, y)`` where X is a DataFrame
-        of model input features and y is a Series of integer labels.
+        of model input features and y is a Series — integer labels
+        for classification, continuous values for regression.
 
         Column pruning, type casting, and derived feature creation all
         belong here. Anything that must match at inference time should
         be mirrored in the plugin's corresponding inference helper.
         """
         raise NotImplementedError
+
+    def evaluate(self, y_true, y_pred) -> tuple:
+        """Return ``(metric_name, value)`` for the held-out predictions.
+
+        Higher-is-better convention — the harness, evaluate.py, agent.py
+        and the MLflow registry promotion logic all assume larger means
+        better. R² is the recommended regression metric (bounded above
+        by 1, comparable across datasets); accuracy is the classification
+        default.
+
+        Override in subclasses to use a different metric. The chosen name
+        becomes the field name in metadata.json + the stdout log line
+        (``validation_<name>=…``).
+        """
+        from sklearn.metrics import accuracy_score, r2_score
+        if self.task == "regression":
+            return "validation_r2", float(r2_score(y_true, y_pred))
+        return "validation_accuracy", float(accuracy_score(y_true, y_pred))
 
     def build_model(self, params: dict):
         """Instantiate an unfitted sklearn-compatible estimator.
