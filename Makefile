@@ -71,6 +71,9 @@ data-als: ## Prepare synthetic ALS dataset (generic user × item interactions)
 data-housing: ## Prepare California housing (sklearn-bundled, regression)
 	$(PY) prepare.py --plugin housing
 
+data-movielens: ## Fetch MovieLens-100K (~1.7 MB) for the ALS recommender path
+	$(PY) prepare_movielens.py
+
 data-bigquery: ## Materialize a BigQuery query (default: public iris dataset)
 	$(PY) prepare_bigquery.py
 
@@ -149,7 +152,7 @@ clean: ## Remove scratch dirs (keeps venv, MLflow data, Feast registry)
 	rm -rf .sm-scratch model_*/ materialized/
 
 .PHONY: help install install-torch install-lightgbm install-skops install-feast install-bigquery install-recommender install-agent install-jupyter install-all
-.PHONY: data-iris data-sonar data-als data-housing data-bigquery bq-upload-sonar bq-data-sonar
+.PHONY: data-iris data-sonar data-als data-housing data-movielens data-bigquery bq-upload-sonar bq-data-sonar
 .PHONY: train train-als train-housing train-torch train-lightgbm train-feast
 .PHONY: image train-byoc train-dlc train-feast-dlc
 .PHONY: serve mlflow-serve demo-categorical agent

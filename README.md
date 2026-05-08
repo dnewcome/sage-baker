@@ -38,6 +38,7 @@ feature_repo/          Feast feature definitions (entities.py, features.py, stor
 prepare_data.py        writes data/iris.csv + lineage.json (toy multiclass dataset)
 prepare_sonar.py       writes data/sonar.csv + Feast parquets + lineage.json
 prepare.py             plugin-aware prep dispatcher (`--plugin housing` etc.)
+prepare_movielens.py   fetches MovieLens-100K for the ALS recommender path
 prepare_bigquery.py    materializes a BigQuery query to parquet + lineage.json
 demo_categorical.py    runnable demo of "new enum value at inference" bug + 3 fixes
 agent.py               autoresearch-style agent loop — edits a plugin iteratively

@@ -85,30 +85,29 @@ RMSE + MAE.
 
 ---
 
-## Phase 2 — Public-data recommender (later)
+## Phase 2 — Public-data recommender (DONE 2026-05-08)
 
 Goal: make `make train-als` work without synthetic data, on a real
 public dataset, so the recommender path is exercisable on a clone.
 
-### Dataset
+### Result
 
-**MovieLens-100K** (100K ratings, 943 users × 1682 movies, 1.7 MB).
-Public, no auth, canonical recommender-system benchmark. The `ml-100k`
-zip is downloadable from grouplens.org.
+`prepare_movielens.py` fetches MovieLens-100K (1.7 MB, no auth) from
+grouplens.org, maps the schema to what the ALS plugin already
+expects (`user_id` / `item_id` / `weight` + bonus `timestamp`),
+writes `data/movielens.csv` + `lineage.json`. ALS plugin needed zero
+changes.
 
-### Approach
+End-to-end:
 
-Add `prepare_movielens.py` that downloads + extracts + writes
-parquets matching the existing `als` plugin's expected schema (user,
-item, rating, timestamp). The plugin doesn't change.
+```
+make data-movielens && make install-recommender && make train-als
+```
 
-Add a `train-movielens` make target, and document the recommender
-demo as a first-class path.
+Metrics on the real data: hit_rate@10 = 0.82, recall@10 = 0.16,
+ndcg@10 = 0.21 — within the typical ALS-on-MovieLens-100K range.
 
-### Files to add
-
-- `prepare_movielens.py`
-- Update README to reference it
+Single make target added: `data-movielens`.
 
 ---
 
