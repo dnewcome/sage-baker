@@ -7,6 +7,13 @@ production-parity workflows.
 
 ## What this is
 
+> **New here?** Start with [`examples/`](examples/) — six end-to-end
+> scenarios (conversion prediction, product matching, semantic search,
+> record linkage, recommender, regression) each with a focused README
+> showing what to run, what files to look at, and how the same code
+> scales to production SageMaker. The rest of this README is the
+> architectural reference.
+
 SageMaker has a "Local Mode" where the SDK runs training/inference jobs in
 Docker containers on your machine using the same `/opt/ml/...` directory
 contracts as real SageMaker. By default it pulls Deep Learning Container
