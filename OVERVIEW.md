@@ -88,12 +88,16 @@ surface.
 Scoping artifacts that capture future direction without blocking
 present work. Nothing in them is half-built.
 
-- **PLAN.md Phase 5** — LLM fine-tune sandbox (5a classification with
-  LoRA, 5b generative deferred).
-- **GH issue #2** — model-types extension brainstorm (XGBoost,
-  time-series, NLP, vision, anomaly, etc.).
-- **GH issue #3** — A/B testing + training on production outcomes
-  design space.
+- **GH issues** — open enhancement ideas + scoped experiments
+  ([all open issues](https://github.com/dnewcome/sagebaker/issues)):
+  - #2 — model-types extension brainstorm (XGBoost, time-series,
+    NLP, vision, anomaly, etc.)
+  - #3 — A/B testing + training on production outcomes design space
+  - #4–#8 — small-to-medium backlog items (per-dataset agent
+    targets, run-history persistence, dataset fingerprinting,
+    knowledge backing store, GitHub Actions CI)
+  - #9 — LLM fine-tune sandbox (5a classification with LoRA, 5b
+    generative deferred)
 
 ## Focusing thought
 
@@ -109,5 +113,5 @@ or shipping a bundle?" — every line should have an answer.
   recipes
 - [CLAUDE.md](CLAUDE.md) — conventions for working in this repo
   with Claude Code
-- [PLAN.md](PLAN.md) — phased roadmap (Phases 1–3 done, 4+
-  candidates, 5 planned)
+- [GH issues](https://github.com/dnewcome/sagebaker/issues) —
+  open backlog and brainstorms

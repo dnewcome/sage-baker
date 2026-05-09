@@ -360,5 +360,5 @@ promote in MLflow, redeploy.
 
 - [OVERVIEW.md](OVERVIEW.md) — mental model when the project feels too big
 - [README.md](README.md) — full reference, deep dives, command recipes
-- [PLAN.md](PLAN.md) — phased roadmap and what's planned next
+- [GH issues](https://github.com/dnewcome/sagebaker/issues) — open backlog and brainstorms
 - [examples/README.md](examples/README.md) — problem-to-plugin mapping
