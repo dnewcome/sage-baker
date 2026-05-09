@@ -311,7 +311,7 @@ Goal: improve the model without re-doing the whole pipeline each time.
 
 ### Agent-loop iteration
 ```bash
-make agent PLUGIN=myproject PROGRAM=program_myproject.md \
+make agent PLUGIN=myproject PROGRAM=agent_myproject.md \
            BUDGET_SECONDS=1800
 ```
 

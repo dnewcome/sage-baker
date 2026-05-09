@@ -6,7 +6,7 @@ keeps the change if better, reverts if worse, repeats. Cheap iteration
 is the whole point.
 
 Loop:
-  1. Read program.md — human-edited prompt with constraints + strategy
+  1. Read agent_default.md — human-edited prompt with constraints + strategy
   2. Read the plugin file the agent is allowed to edit
   3. Ask Claude for a complete new version
   4. Write it, syntax-check, run `make train`, parse validation_accuracy
@@ -300,7 +300,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--plugin", default="src/plugins/default.py",
                    help="file the agent is allowed to edit")
-    p.add_argument("--program", default="program.md",
+    p.add_argument("--program", default="agent_default.md",
                    help="prompt with constraints + strategy hints")
     p.add_argument("--metric", default=None,
                    help="metric name to track (default: any validation_<name>=…)")

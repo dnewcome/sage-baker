@@ -33,7 +33,7 @@ make train-clickstream    # bundle in ./models/clickstream/
 | --- | --- |
 | [`src/plugins/clickstream.py`](../../src/plugins/clickstream.py) | The plugin: feature engineering + estimator + threshold |
 | [`simulate/scenarios/fuzzy_clickstream.py`](../../simulate/scenarios/fuzzy_clickstream.py) | Synthetic clickstream generator |
-| [`program_clickstream.md`](../../program_clickstream.md) | Agent-loop constraints (anti-leakage rules, strategy hints) |
+| [`agent_clickstream.md`](../../agent_clickstream.md) | Agent-loop constraints (anti-leakage rules, strategy hints) |
 | `data/fuzzy/` | Generated training + ground truth (gitignored) |
 | `models/clickstream/` | Bundle output: `config.json`, `metadata.json`, `model.joblib` (gitignored) |
 
@@ -56,7 +56,7 @@ make agent-clickstream    # needs ANTHROPIC_API_KEY in .env
 
 The agent edits `src/plugins/clickstream.py` iteratively, trains,
 keeps proposals that beat the current best, reverts otherwise.
-Constraints in `program_clickstream.md` block known leak patterns
+Constraints in `agent_clickstream.md` block known leak patterns
 (post-decision event reconstruction, value-as-feature, etc.). See
 [main README → Autoresearch-style agent loop](../../README.md#autoresearch-style-agent-loop).
 
@@ -107,7 +107,7 @@ laptop to prod:
 | Serving | `mlflow-serve-http` on laptop | staging endpoint | SageMaker endpoint via `pipeline.py` / `deploy_endpoint.py` |
 
 What you commit to git: `src/plugins/clickstream.py` and any
-adjustments to `program_clickstream.md`. What you do not commit: the
+adjustments to `agent_clickstream.md`. What you do not commit: the
 bundle artifacts (gitignored), local data, MLflow runs.
 
 The bridge from local to cloud is the

@@ -84,9 +84,9 @@ prep/prepare_movielens.py   fetches MovieLens-100K for the ALS recommender path
 prep/prepare_bigquery.py    materializes a BigQuery query to parquet + lineage.json
 tools/demo_categorical.py    runnable demo of "new enum value at inference" bug + 3 fixes
 agent.py               autoresearch-style agent loop — edits a plugin iteratively
-program.md             agent prompt for the classification baseline (sonar)
-program_regression.md  agent prompt for the regression baseline (housing)
-program_template.md    starter template for a per-dataset agent program
+agent_default.md             agent prompt for the classification baseline (sonar)
+agent_regression.md  agent prompt for the regression baseline (housing)
+agent_template.md    starter template for a per-dataset agent program
 drivers/local_train.py         BYOC driver — uses the local image, no AWS account
 drivers/local_train_dlc.py     DLC driver  — uses the AWS scikit-learn DLC image
 drivers/local_train_feast_dlc.py DLC + Feast — host-side feature retrieval, container trains
@@ -1225,7 +1225,7 @@ whichever the plugin emits).
 
 ```mermaid
 flowchart LR
-  PROG[program.md<br/><i>human-edited prompt</i>]
+  PROG[agent_default.md<br/><i>human-edited prompt</i>]
   BASE["baseline run<br/>(unmodified plugin)"]
   AGENT[agent.py<br/>+ Claude]
   PLUGIN[src/plugins/X.py<br/><i>agent-edited</i>]
@@ -1241,7 +1241,7 @@ flowchart LR
 ```
 
 The structure mirrors autoresearch's three files (`prepare.py` /
-`train.py` / `program.md`) but built on top of this repo's plugin
+`train.py` / `agent_default.md`) but built on top of this repo's plugin
 system, so the agent edits a small focused file (`src/plugins/X.py`)
 rather than the whole trainer. Cheap iteration on small data is what
 makes this practical — sub-second training on sonar means an
@@ -1261,7 +1261,7 @@ make agent                                   # default plugin, 20 iters, 30 min 
 make data-housing
 .venv/bin/python agent.py \
     --plugin src/plugins/housing.py \
-    --program program_regression.md
+    --program agent_regression.md
 ```
 
 ### Flags
@@ -1269,7 +1269,7 @@ make data-housing
 | Flag | Default | Purpose |
 | ---- | ------- | ------- |
 | `--plugin <path>` | `src/plugins/default.py` | which plugin file the agent edits (and trains via `python src/train.py --plugin <name>`) |
-| `--program <path>` | `program.md` | the constraints + strategy prompt (edit `program.md` / `program_regression.md` / `program_template.md`) |
+| `--program <path>` | `agent_default.md` | the constraints + strategy prompt (edit `agent_default.md` / `agent_regression.md` / `agent_template.md`) |
 | `--data-dir <dir>` | `data` | where the trainer reads CSV/parquet from — useful for running parallel agents against different datasets |
 | `--max-iterations N` | `20` | hard cap on iterations |
 | `--budget-seconds N` | `1800` | wall-clock cap (default 30 min) |
@@ -1310,8 +1310,8 @@ instead of churning:
 
 ### What's logged
 
-Constraints + strategy hints live in `program.md` (or the per-project
-copy from `program_template.md`) — edit that, not the agent code, to
+Constraints + strategy hints live in `agent_default.md` (or the per-project
+copy from `agent_template.md`) — edit that, not the agent code, to
 change what the agent's allowed to do or how it should approach the
 problem.
 
@@ -1336,13 +1336,13 @@ cp src/plugins/default.py src/plugins/private/X.py
 # edit — point at the right target column, set up features
 
 # 3. Drop a per-project program from the template
-cp program_template.md private/program_X.md
+cp agent_template.md private/agent_X.md
 # edit — fill placeholders with your real schema, target, metric, baseline
 
 # 4. Run the agent
 .venv/bin/python agent.py \
     --plugin src/plugins/private/X.py \
-    --program private/program_X.md \
+    --program private/agent_X.md \
     --data-dir ./data/X
 ```
 

@@ -34,7 +34,7 @@ make train-housing            # bundle in ./models/housing/
 | --- | --- |
 | [`src/plugins/housing.py`](../../src/plugins/housing.py) | The plugin: heavy feature engineering + HistGradientBoostingRegressor |
 | [`src/plugins/base.py`](../../src/plugins/base.py) | `TrainingPlugin` base — note `task: str = "classification"` defaults; housing overrides |
-| [`program_regression.md`](../../program_regression.md) | Agent-loop program for regression problems |
+| [`agent_regression.md`](../../agent_regression.md) | Agent-loop program for regression problems |
 | `data/california.csv` | sklearn-bundled California housing (gitignored) |
 | `models/housing/` | Bundle output (gitignored) |
 
@@ -45,7 +45,7 @@ make train-housing            # bundle in ./models/housing/
 ```bash
 .venv/bin/python agent.py \
   --plugin src/plugins/housing.py \
-  --program program_regression.md
+  --program agent_regression.md
 ```
 
 The agent program for regression uses the same shape as

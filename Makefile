@@ -186,7 +186,7 @@ agent: ## autoresearch-style agent loop — edits src/plugins/default.py iterati
 agent-clickstream: ## autoresearch loop on src/plugins/clickstream.py against ./data/fuzzy/
 	$(PY) agent.py \
 	    --plugin src/plugins/clickstream.py \
-	    --program program_clickstream.md \
+	    --program agent_clickstream.md \
 	    --data-dir ./data/fuzzy
 
 test: ## Run smoke test suite (bundle round-trip, plugin contract, etc.)
