@@ -83,6 +83,9 @@ data-simulate: ## Run a simulated scenario: SCENARIO=<name> OUTPUT=<dir>
 data-fuzzy: ## Generate fuzzy_clickstream scenario into ./data_fuzzy/
 	$(PY) prepare_simulate.py --scenario fuzzy_clickstream --output ./data_fuzzy/
 
+data-linkage: ## Build pair-level dataset from ./data_fuzzy/ for record-linkage training
+	$(PY) prepare_linkage.py --input ./data_fuzzy --output ./data_linkage --n-pairs 20000
+
 data-bigquery: ## Materialize a BigQuery query (default: public iris dataset)
 	$(PY) prepare_bigquery.py
 
@@ -106,6 +109,9 @@ train-housing: ## Host-side regression on California housing (R² metric)
 
 train-clickstream: ## Host-side conversion classification on a fuzzy_clickstream dataset
 	$(PY) src/train.py --train ./data_fuzzy --model-dir ./model_clickstream --plugin clickstream
+
+train-clickstream-linkage: ## Train record-linkage model on pair-level data (run data-linkage first)
+	$(PY) src/train.py --train ./data_linkage --model-dir ./model_clickstream_linkage --plugin clickstream_linkage
 
 train-torch: ## Host-side torch (MLP) training
 	$(PY) src/train_torch.py --train $(DATA_DIR) --model-dir ./model_torch
@@ -143,6 +149,12 @@ demo-categorical: ## Demo: 'new enum value at inference' bug + 3 fixes
 
 agent: ## autoresearch-style agent loop — edits src/plugins/default.py iteratively
 	$(PY) agent.py
+
+agent-clickstream: ## autoresearch loop on src/plugins/clickstream.py against ./data_fuzzy/
+	$(PY) agent.py \
+	    --plugin src/plugins/clickstream.py \
+	    --program program_clickstream.md \
+	    --data-dir ./data_fuzzy
 
 test: ## Run smoke test suite (bundle round-trip, plugin contract, etc.)
 	$(VENV)/bin/pytest tests/ -q

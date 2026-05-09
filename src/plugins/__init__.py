@@ -32,6 +32,7 @@ from .als import ALSPlugin
 from .base import TrainingPlugin
 from .base_recommender import InteractionData, RecommenderPlugin
 from .clickstream import ClickstreamPlugin
+from .clickstream_linkage import ClickstreamLinkagePlugin
 from .default import DefaultPlugin
 from .housing import HousingPlugin
 
@@ -39,6 +40,7 @@ _SUPERVISED_PLUGINS: list[type[TrainingPlugin]] = [
     DefaultPlugin,
     HousingPlugin,
     ClickstreamPlugin,
+    ClickstreamLinkagePlugin,
 ]
 
 _RECOMMENDER_PLUGINS: list[type[RecommenderPlugin]] = [
