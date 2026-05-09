@@ -250,6 +250,10 @@ def main():
     p.add_argument("--max-iterations", type=int, default=20)
     p.add_argument("--budget-seconds", type=int, default=1800,
                    help="wall-clock cap (default 30 min)")
+    p.add_argument("--data-dir", default="data",
+                   help="dir containing the training CSV/parquet "
+                        "(default: data; useful for running multiple agents "
+                        "in parallel against different prepared datasets)")
     p.add_argument("--diversify", action="store_true",
                    help="explicitly track sklearn estimator classes used in "
                         "kept proposals and ask the LLM to prefer un-tried "
@@ -278,7 +282,7 @@ def main():
     model_dir = f"./model_{plugin_name}"
     train_cmd = [
         sys.executable, "src/train.py",
-        "--train", "data",
+        "--train", args.data_dir,
         "--model-dir", model_dir,
         "--plugin", plugin_name,
     ]
