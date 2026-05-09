@@ -92,6 +92,9 @@ data-products: ## Generate product_catalog scenario into ./data_products/
 data-linkage: ## Build pair-level dataset from ./data_fuzzy/ for record-linkage training
 	$(PY) prepare_linkage.py --input ./data_fuzzy --output ./data_linkage --n-pairs 20000
 
+data-matcher-pairs: ## Build pair-level dataset from ./data_products/ for product-matching training
+	$(PY) prepare_matcher_pairs.py --input ./data_products --output ./data_matcher --n-pairs 5000
+
 data-bigquery: ## Materialize a BigQuery query (default: public iris dataset)
 	$(PY) prepare_bigquery.py
 
@@ -121,6 +124,9 @@ train-clickstream-linkage: ## Train record-linkage model on pair-level data (run
 
 train-search: ## Build a FAISS semantic-search index on the product catalog (run data-products first)
 	$(PY) src/train_retrieval.py --train ./data_products --model-dir ./model_search --plugin product_search
+
+train-product-matcher: ## Train pair-classifier for product matching (run data-matcher-pairs first)
+	$(PY) src/train.py --train ./data_matcher --model-dir ./model_product_matcher --plugin product_matcher
 
 train-torch: ## Host-side torch (MLP) training
 	$(PY) src/train_torch.py --train $(DATA_DIR) --model-dir ./model_torch

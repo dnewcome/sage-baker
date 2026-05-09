@@ -35,12 +35,14 @@ from .clickstream import ClickstreamPlugin
 from .clickstream_linkage import ClickstreamLinkagePlugin
 from .default import DefaultPlugin
 from .housing import HousingPlugin
+from .product_matcher import ProductMatcherPlugin
 
 _SUPERVISED_PLUGINS: list[type[TrainingPlugin]] = [
     DefaultPlugin,
     HousingPlugin,
     ClickstreamPlugin,
     ClickstreamLinkagePlugin,
+    ProductMatcherPlugin,
 ]
 
 _RECOMMENDER_PLUGINS: list[type[RecommenderPlugin]] = [
