@@ -64,6 +64,8 @@ requirements-feast.txt opt-in extras for the Feast feature-store example
 requirements-bigquery.txt opt-in: google-cloud-bigquery + db-dtypes
 requirements-jupyter.txt  opt-in: jupyterlab + ipykernel + matplotlib + seaborn
 requirements-agent.txt    opt-in: anthropic SDK for the autoresearch-style agent
+.claude/skills/        Claude Code skills shipped with the repo
+                       (e.g. `/productionize` — agent run → starter notebook)
 ```
 
 The training script lives in `src/` so the DLC's `source_dir` can point at a
@@ -1176,6 +1178,29 @@ cp program_template.md private/program_X.md
 
 `src/plugins/private/` and `Makefile.private` are already gitignored,
 so anything in there stays out of the public repo.
+
+### After convergence: bootstrap a notebook
+
+When the agent stops finding wins, the bundle in `model_<plugin>/` is
+your starting point — but a bundle isn't a deliverable. Open Claude
+Code in this repo and run `/productionize` (or `/productionize <plugin>`
+to target a specific bundle). It uses the
+[`productionize` skill](.claude/skills/productionize/SKILL.md) to
+generate `notebooks/<plugin>_productionize.ipynb` with:
+
+- model rebuilt from `config.json` (not unpickled), proving the
+  weights/code split is real
+- the same data reloaded via `data_lineage` (BQ query if applicable)
+- a sanity-check cell that compares config-rebuild predictions
+  against the bundled weights
+- task-aware EDA cells (confusion / ROC for classification;
+  predicted-vs-actual / residuals for regression)
+- a production checklist (version pinning, lineage lock-in,
+  monitoring, deploy targets)
+
+The notebook is a hand-editable scratchpad, not a finished pipeline —
+it gives you something to think *with* while planning the lift to
+work code.
 
 ## Productionizing on SageMaker
 

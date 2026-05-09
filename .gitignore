@@ -29,6 +29,10 @@ feature_repo/data/*.db
 src/plugins/private/
 Makefile.private
 
+# Claude Code: ship the project skills, ignore per-user settings
+.claude/*
+!.claude/skills/
+
 # Credentials / secrets — never commit
 *-key.json
 *-credentials.json
