@@ -304,7 +304,7 @@ def main():
                    help="prompt with constraints + strategy hints")
     p.add_argument("--metric", default=None,
                    help="metric name to track (default: any validation_<name>=…)")
-    p.add_argument("--max-iterations", type=int, default=20)
+    p.add_argument("--max-iterations", type=int, default=50)
     p.add_argument("--budget-seconds", type=int, default=1800,
                    help="wall-clock cap (default 30 min)")
     p.add_argument("--data-dir", default="data",
