@@ -182,6 +182,38 @@ def main():
         )
 
 
+class _ThresholdedModel:
+    """Wraps a binary classifier so .predict() applies a configured
+    decision threshold (config.json's `prediction_threshold`) instead
+    of sklearn's default 0.5.
+
+    Forwards every other attribute (predict_proba, classes_,
+    feature_importances_, etc.) to the underlying model. Identity is
+    important here: callers that need the raw estimator can reach it
+    via `.raw_model`.
+
+    Lives here in train.py so every serving path that uses model_fn
+    — local_serve.py, AWS DLC's SKLearn inference container, the
+    BundleWrapper PyFunc — gets the same threshold behaviour for free.
+    """
+    def __init__(self, raw_model, threshold: float):
+        self.raw_model = raw_model
+        self.threshold = float(threshold)
+
+    def predict(self, X):
+        proba = self.raw_model.predict_proba(X)
+        # Multiclass: threshold doesn't apply; fall back to argmax (which
+        # is what sklearn's predict does anyway).
+        if proba.shape[1] != 2:
+            return self.raw_model.predict(X)
+        return (proba[:, 1] >= self.threshold).astype(int)
+
+    def __getattr__(self, name):
+        # Only called if `name` not found on the wrapper itself; forwards
+        # to the raw model for predict_proba / classes_ / etc.
+        return getattr(self.raw_model, name)
+
+
 def model_fn(model_dir):
     """Inference contract: read the bundle, return a model object.
 
@@ -191,6 +223,13 @@ def model_fn(model_dir):
 
     Dispatch on `weights_format` recorded in config.json so swapping the
     format at training time doesn't require updating any caller.
+
+    If the bundle has a non-default `prediction_threshold` recorded and
+    the model is a binary classifier with `predict_proba`, returns a
+    `_ThresholdedModel` wrapper that applies the threshold. Otherwise
+    returns the raw estimator. Threshold travels with the bundle, so
+    every serving path (DLC, MLflow PyFunc, local_serve) sees the same
+    decision boundary.
     """
     config = bundle.load_config(model_dir)
     fmt = config.get("weights_format", "joblib")
@@ -198,7 +237,14 @@ def model_fn(model_dir):
         raise ValueError(f"unknown weights_format {fmt!r}; expected one of "
                          f"{sorted(WEIGHTS_FORMATS)}")
     _, _, load_weights = WEIGHTS_FORMATS[fmt]
-    return load_weights(os.path.join(model_dir, config["weights_file"]))
+    raw = load_weights(os.path.join(model_dir, config["weights_file"]))
+
+    threshold = config.get("prediction_threshold")
+    task = config.get("task", "classification")
+    if (threshold is not None and float(threshold) != 0.5
+            and task == "classification" and hasattr(raw, "predict_proba")):
+        return _ThresholdedModel(raw, threshold)
+    return raw
 
 
 if __name__ == "__main__":
