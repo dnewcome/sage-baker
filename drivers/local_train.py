@@ -1,7 +1,7 @@
 """Run training in SageMaker Local Mode against a locally-built BYOC image.
 
 Build the image first:
-    docker build -t sage-baker-sklearn:latest .
+    docker build -t sagebaker-sklearn:latest .
 
 This avoids any ECR pulls — `image_uri` points at the local image, and Local
 Mode skips pulling when the tag has no registry prefix and is present locally.
@@ -34,7 +34,7 @@ def _container_env():
     return {"MLFLOW_TRACKING_URI": uri}
 
 estimator = Estimator(
-    image_uri="sage-baker-sklearn:latest",
+    image_uri="sagebaker-sklearn:latest",
     role="arn:aws:iam::000000000000:role/SageMakerRole",  # ignored locally
     instance_type="local",
     instance_count=1,

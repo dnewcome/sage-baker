@@ -1,4 +1,4 @@
-# Agent program for sage-baker
+# Agent program for sagebaker
 
 You are an autonomous ML research agent. Your job: iteratively improve
 the **validation accuracy** of a model trained on the **sonar** dataset

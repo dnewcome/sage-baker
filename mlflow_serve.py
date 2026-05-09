@@ -23,7 +23,7 @@ Prereqs:
 Usage:
     export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
     python mlflow_serve.py
-    python mlflow_serve.py --name sage-baker-lightgbm --version 1
+    python mlflow_serve.py --name sagebaker-lightgbm --version 1
 """
 import argparse
 import os
@@ -42,7 +42,7 @@ if not os.environ.get("MLFLOW_TRACKING_URI"):
     raise SystemExit("Set MLFLOW_TRACKING_URI first (e.g. http://127.0.0.1:5000)")
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--name", default="sage-baker-sklearn",
+parser.add_argument("--name", default="sagebaker-sklearn",
                     help="registered model name in MLflow")
 parser.add_argument("--version", default="latest",
                     help='registered version, or "latest"')

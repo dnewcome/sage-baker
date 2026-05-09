@@ -113,7 +113,7 @@ bundle artifacts (gitignored), local data, MLflow runs.
 The bridge from local to cloud is the
 **[Local iteration vs production push](../../README.md#local-iteration-vs-production-push)**
 section in the main README. The pattern is "researchers push code,
-cloud trains on full data" — sage-baker's design specifically
+cloud trains on full data" — sagebaker's design specifically
 supports this without code changes between the two environments.
 
 ## Where it can go next

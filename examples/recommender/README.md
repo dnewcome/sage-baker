@@ -13,7 +13,7 @@ user × item interaction matrix into low-rank user and item
 embeddings. At inference time, recommendations for a user are the
 top-K items by dot product against the user's vector.
 
-This is the only scenario in sage-baker that uses **real public
+This is the only scenario in sagebaker that uses **real public
 data** (MovieLens-100K) rather than a synthetic generator —
 collaborative filtering needs real user behavior signal that's hard
 to fake convincingly.

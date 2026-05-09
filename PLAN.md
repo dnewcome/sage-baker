@@ -2,7 +2,7 @@
 
 ## Phase 1 — Regression task + plugin (DONE 2026-05-08)
 
-Goal: extend sage-baker beyond binary/multiclass classification so the
+Goal: extend sagebaker beyond binary/multiclass classification so the
 plugin abstraction covers the full supervised-learning shape. Forces
 out hidden classification-specific assumptions in the harness.
 

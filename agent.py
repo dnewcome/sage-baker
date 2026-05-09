@@ -1,4 +1,4 @@
-"""autoresearch-style agent that iteratively improves a sage-baker plugin.
+"""autoresearch-style agent that iteratively improves a sagebaker plugin.
 
 Inspired by karpathy/autoresearch — an LLM agent edits a small Python
 file, runs training (~seconds on sonar-sized data), reads the metric,

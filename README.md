@@ -1,4 +1,4 @@
-# sage-baker
+# sagebaker
 
 Local SageMaker training sandbox using **SageMaker Local Mode**, with two
 interchangeable paths: a **bring-your-own-container (BYOC)** image for fully
@@ -165,7 +165,7 @@ Both paths produce the same shape of output:
 ```
 algo-1-XXXX  | validation_accuracy=1.0000
 algo-1-XXXX exited with code 0
-model artifact: file:///.../sage-baker/.sm-scratch/.../compressed_artifacts/model.tar.gz
+model artifact: file:///.../sagebaker/.sm-scratch/.../compressed_artifacts/model.tar.gz
 ```
 
 The model artifact (`model.tar.gz` containing `model.joblib`) lives under
@@ -180,7 +180,7 @@ flowchart LR
 
   subgraph byoc_path["BYOC &nbsp;<i>drivers/local_train.py</i>"]
     direction TB
-    BD[local Docker image<br/>sage-baker-sklearn]
+    BD[local Docker image<br/>sagebaker-sklearn]
     BC["container<br/>train.py reads CSV/parquet<br/>writes /opt/ml/model"]
   end
 
@@ -291,7 +291,7 @@ repo — versioned, debuggable, hot-editable. Want to fix a bug in
 
 ### Bundle file schemas (project convention)
 
-The bundle's metadata files use a sage-baker-specific schema, not an
+The bundle's metadata files use a sagebaker-specific schema, not an
 established standard. This is intentional — full control over what
 travels with the artifact (e.g. `prediction_threshold`,
 `data_lineage`) without committing to MLflow's `MLmodel` format. The
@@ -355,7 +355,7 @@ Optional fields:
 
 Converters between this format and standards (`MLmodel` import/export,
 ONNX export, HuggingFace-shaped retrieval bundles) are TODO — see
-[issue #1](https://github.com/dnewcome/sage-baker/issues/1).
+[issue #1](https://github.com/dnewcome/sagebaker/issues/1).
 
 ### Format choices
 
@@ -1141,7 +1141,7 @@ usable from notebooks:
 
 ```bash
 .venv/bin/pip install -r requirements-jupyter.txt
-.venv/bin/python -m ipykernel install --user --name sage-baker --display-name "Python (sage-baker)"
+.venv/bin/python -m ipykernel install --user --name sagebaker --display-name "Python (sagebaker)"
 .venv/bin/jupyter lab
 ```
 
@@ -1164,7 +1164,7 @@ train.main()
 There's a starter notebook at `notebooks/bigquery_exploration.ipynb`
 that demonstrates: setup, BQ via cell magic and direct client, training
 on the result, and inference — all in one place. Open it from the Lab
-file browser (kernel: **Python (sage-baker)**).
+file browser (kernel: **Python (sagebaker)**).
 
 A few patterns that pay off:
 
@@ -1475,8 +1475,8 @@ registered model package ARN and stands up an endpoint:
 
 ```bash
 .venv/bin/python deploy_endpoint.py \
-    --model-package-arn arn:aws:sagemaker:us-east-1:ACCT:model-package/sage-baker-sklearn/3 \
-    --endpoint-name sage-baker-sklearn-prod \
+    --model-package-arn arn:aws:sagemaker:us-east-1:ACCT:model-package/sagebaker-sklearn/3 \
+    --endpoint-name sagebaker-sklearn-prod \
     --role-arn arn:aws:iam::ACCT:role/SageMakerExecutionRole
 ```
 
@@ -1484,7 +1484,7 @@ To invoke afterwards:
 
 ```python
 from sagemaker.predictor import Predictor
-Predictor(endpoint_name="sage-baker-sklearn-prod").predict([[5.1, 3.5, ...]])
+Predictor(endpoint_name="sagebaker-sklearn-prod").predict([[5.1, 3.5, ...]])
 ```
 
 To stop billing: `aws sagemaker delete-endpoint --endpoint-name ...`.
@@ -1625,7 +1625,7 @@ caught a real DLC-1.2 vs host-1.3 incompatibility during development.
 For a production-shape SageMaker endpoint deploy (HTTPS,
 auto-scaling, multi-AZ), see `deploy_endpoint.py` and the
 "Productionizing on SageMaker" section above. For an MLflow
-registry round-trip (`models:/sage-baker-sklearn/1`), see
+registry round-trip (`models:/sagebaker-sklearn/1`), see
 `mlflow_serve.py`. All three paths converge on the same `model_fn`.
 
 ### HTTP scoring server (curl-able)
@@ -1636,7 +1636,7 @@ For a real HTTP endpoint backed by an MLflow-registered model:
 make mlflow-server                                                # terminal 1
 MLFLOW_TRACKING_URI=http://127.0.0.1:5000 make train-clickstream  # registers v<n>
 make mlflow-serve-http                                            # terminal 2 (default: latest)
-# or: make mlflow-serve-http NAME=sage-baker-sklearn VERSION=2 PORT=5001
+# or: make mlflow-serve-http NAME=sagebaker-sklearn VERSION=2 PORT=5001
 ```
 
 Then curl with the `dataframe_records` payload format (NOT `inputs` —

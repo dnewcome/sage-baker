@@ -1,4 +1,4 @@
-project: sage_baker
+project: sagebaker
 provider: local
 registry: data/registry.db
 online_store:

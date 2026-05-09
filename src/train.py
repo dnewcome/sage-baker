@@ -178,7 +178,7 @@ def main():
         tracking.register_bundle_as_pyfunc(
             model_dir=args.model_dir,
             model_fn=model_fn,
-            registered_name=os.environ.get("MLFLOW_REGISTERED_MODEL", "sage-baker-sklearn"),
+            registered_name=os.environ.get("MLFLOW_REGISTERED_MODEL", "sagebaker-sklearn"),
         )
 
 

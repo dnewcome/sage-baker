@@ -36,10 +36,10 @@ from sagemaker.workflow.step_collections import RegisterModel
 from sagemaker.workflow.steps import ProcessingStep, TrainingStep
 
 # ===== fill in for your account ===========================================
-PROJECT_NAME = "sage-baker"
+PROJECT_NAME = "sagebaker"
 BUCKET = "yourorg-ml-prod"
 ROLE_ARN = "arn:aws:iam::ACCT:role/SageMakerExecutionRole"
-MODEL_PACKAGE_GROUP = "sage-baker-sklearn"
+MODEL_PACKAGE_GROUP = "sagebaker-sklearn"
 FRAMEWORK_VERSION = "1.2-1"  # match src/train.py's sklearn pin
 
 session = PipelineSession()

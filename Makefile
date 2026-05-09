@@ -47,7 +47,7 @@ install-bigquery: ## Install BigQuery extras
 
 install-jupyter: ## Install Jupyter and register the project kernel
 	$(PIP) install -r requirements-jupyter.txt
-	$(PY) -m ipykernel install --user --name sage-baker --display-name "Python (sage-baker)"
+	$(PY) -m ipykernel install --user --name sagebaker --display-name "Python (sagebaker)"
 
 install-recommender: ## Install recommender extras (implicit, scipy, pyarrow)
 	$(PIP) install -r requirements-recommender.txt
@@ -140,7 +140,7 @@ train-feast: ## Host-side sklearn + Feast (point-in-time historical join)
 # ---------- training (SageMaker Local Mode) ----------------------------
 
 image: ## Build the BYOC training image
-	docker build -t sage-baker-sklearn:latest .
+	docker build -t sagebaker-sklearn:latest .
 
 train-byoc: image ## SageMaker Local Mode + local BYOC image (no AWS account)
 	$(PY) drivers/local_train.py
@@ -160,7 +160,7 @@ mlflow-serve: ## Load model via MLflow Model Registry
 	MLFLOW_TRACKING_URI=$(MLFLOW_URI) $(PY) mlflow_serve.py
 
 mlflow-serve-http: ## HTTP scoring server: curl POST to localhost:5001/invocations. Override NAME/VERSION/PORT.
-	@$(eval NAME ?= sage-baker-sklearn)
+	@$(eval NAME ?= sagebaker-sklearn)
 	@$(eval VERSION ?= latest)
 	@$(eval PORT ?= 5001)
 	@echo "serving models:/$(NAME)/$(VERSION) on port $(PORT) — POST to http://127.0.0.1:$(PORT)/invocations"

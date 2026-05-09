@@ -13,19 +13,19 @@ that calls the SageMaker SDK's `model.deploy()`. Same shape as
 
 Usage:
     python deploy_endpoint.py \\
-        --model-package-arn arn:aws:sagemaker:us-east-1:ACCT:model-package/sage-baker-sklearn/3 \\
-        --endpoint-name sage-baker-sklearn-prod \\
+        --model-package-arn arn:aws:sagemaker:us-east-1:ACCT:model-package/sagebaker-sklearn/3 \\
+        --endpoint-name sagebaker-sklearn-prod \\
         --role-arn arn:aws:iam::ACCT:role/SageMakerExecutionRole
 
 Then test from any AWS-authed shell:
     aws sagemaker-runtime invoke-endpoint \\
-        --endpoint-name sage-baker-sklearn-prod \\
+        --endpoint-name sagebaker-sklearn-prod \\
         --content-type application/json \\
         --body '[[5.1,3.5,...]]' /tmp/out.json
 
 Or from Python:
     from sagemaker.predictor import Predictor
-    Predictor(endpoint_name="sage-baker-sklearn-prod").predict([[5.1, 3.5, ...]])
+    Predictor(endpoint_name="sagebaker-sklearn-prod").predict([[5.1, 3.5, ...]])
 
 To tear down (stops billing): `aws sagemaker delete-endpoint --endpoint-name <name>`
 """

@@ -1,4 +1,4 @@
-# sage-baker — Claude Code working notes
+# sagebaker — Claude Code working notes
 
 A personal sandbox for ML pipeline patterns: training plugins, the
 bundle architecture (config + weights split), MLflow / Feast /
@@ -58,7 +58,7 @@ is path 1.
   under `src/plugins/private/` (gitignored) or `Makefile.private`
   (also gitignored). Never commit work-specific column names,
   business logic, or company names.
-- **Treat additions as exploratory** — sage-baker is a playground,
+- **Treat additions as exploratory** — sagebaker is a playground,
   not a product. Demo scripts and runnable patterns beat abstraction.
 - **`make help`** lists every target.
 

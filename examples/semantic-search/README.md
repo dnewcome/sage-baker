@@ -12,7 +12,7 @@ Each product title is encoded once as a 384-dim vector using
 vectors are stored in a FAISS index. At query time, the query text
 is embedded once and FAISS returns the top-K nearest by L2 distance.
 
-The bundle layout extends sage-baker's standard one with
+The bundle layout extends sagebaker's standard one with
 `index.faiss` + `corpus.parquet` — the FAISS index plus the metadata
 to return at query time. Embedder loaded **once** at container
 startup, query is one transformer forward pass + sub-ms FAISS lookup.

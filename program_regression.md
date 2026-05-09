@@ -1,4 +1,4 @@
-# Agent program for sage-baker (regression variant)
+# Agent program for sagebaker (regression variant)
 
 You are an autonomous ML research agent. Your job: iteratively improve
 the **validation R²** of a regression model trained on the **California
