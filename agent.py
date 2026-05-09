@@ -163,6 +163,30 @@ def src_hash(text):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]
 
 
+def show_diff(old_src, new_src, max_lines=40):
+    """Compact unified diff of two source strings, indented for the iter log.
+
+    Hides headers, keeps a small context window. If the diff is larger
+    than max_lines, fall back to an add/remove line-count summary so a
+    full rewrite doesn't drown the terminal.
+    """
+    import difflib
+    raw = list(difflib.unified_diff(
+        old_src.splitlines(keepends=True),
+        new_src.splitlines(keepends=True),
+        n=2,  # 2 lines of context per change
+        lineterm="",
+    ))
+    if not raw:
+        return "  (no diff)"
+    body = [l for l in raw if not l.startswith(("+++", "---"))]
+    added = sum(1 for l in body if l.startswith("+"))
+    removed = sum(1 for l in body if l.startswith("-"))
+    if len(body) > max_lines:
+        return f"  diff: +{added} / -{removed} lines (full diff suppressed)"
+    return "\n".join("  " + line.rstrip("\n") for line in body) + f"\n  ({added} added, {removed} removed)"
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--plugin", default="src/plugins/default.py",
@@ -270,6 +294,7 @@ def main():
 
         write(args.plugin, proposal)
         print(f"  wrote new plugin (hash={src_hash(proposal)})")
+        print(show_diff(plugin_src, proposal))
 
         result = subprocess.run(
             train_cmd, capture_output=True, text=True, env=os.environ.copy()
