@@ -65,7 +65,7 @@ feature engineering buys.
 and dispatches accordingly. For housing, the output JSON has R² +
 RMSE + MAE; for clickstream, precision/recall/F1. Run
 `python evaluate.py --model ./models/housing --test ./data --output
-./eval_housing` and inspect `metrics.json`.
+./eval/housing` and inspect `metrics.json`.
 
 ## Scale to production
 

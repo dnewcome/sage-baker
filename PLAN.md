@@ -75,8 +75,8 @@ and the agent's grep widens to match any `validation_\w+=` line.
 make data-housing
 make train MODEL_DIR=./models/housing --plugin housing
 make serve MODEL_DIR=./models/housing
-.venv/bin/python evaluate.py --model ./models/housing --test ./data --output ./eval_housing
-cat ./eval_housing/metrics.json
+.venv/bin/python evaluate.py --model ./models/housing --test ./data --output ./eval/housing
+cat ./eval/housing/metrics.json
 ```
 
 Expectation: bundle has `task: "regression"` and `validation_r2` in
