@@ -25,7 +25,7 @@ import pandas as pd
 
 URL = "https://raw.githubusercontent.com/jbrownlee/Datasets/master/sonar.csv"
 DATA_DIR = "data"
-FEAST_DATA_DIR = os.path.join("feature_repo", "data")
+FEAST_DATA_DIR = os.path.join("feature_store", "data")
 
 # wipe stale data
 for d in (DATA_DIR, FEAST_DATA_DIR):

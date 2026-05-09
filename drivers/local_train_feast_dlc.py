@@ -14,7 +14,7 @@ local files.
 
 Prereqs:
   * AWS creds set (`aws configure` or sso) so the DLC pull works
-  * `feast apply` has been run in feature_repo/
+  * `feast apply` has been run in feature_store/
   * data prepared with `python prepare_sonar.py`
 """
 import os
@@ -40,7 +40,7 @@ os.makedirs(SCRATCH, exist_ok=True)
 os.environ["TMPDIR"] = SCRATCH
 
 # --- 1. Feast retrieval (host-side) -------------------------------------
-FEATURE_REPO = "./feature_repo"
+FEATURE_REPO = "./feature_store"
 FEATURE_REFS = [f"sonar_bands:f{i}" for i in range(60)]
 MATERIALIZED_DIR = os.path.abspath("./materialized")
 

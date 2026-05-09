@@ -26,8 +26,8 @@ mlartifacts/
 mlruns/
 
 # Feast: source files are tracked, generated state is not.
-feature_repo/data/*.parquet
-feature_repo/data/*.db
+feature_store/data/*.parquet
+feature_store/data/*.db
 
 # Private plugins / scenarios — company-specific; never in the public repo
 src/plugins/private/

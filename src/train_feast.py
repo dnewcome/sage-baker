@@ -7,7 +7,7 @@ keyed by entity + timestamp. The training/serving skew problem goes
 away because the same FeatureView is used at inference time too.
 
 Usage:
-    python src/train_feast.py --feature-repo ./feature_repo \\
+    python src/train_feast.py --feature-store ./feature_store \\
                               --model-dir ./model_feast
 """
 import argparse
@@ -32,10 +32,10 @@ FEATURE_REFS = [f"sonar_bands:f{i}" for i in range(60)]
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--feature-repo", default="./feature_repo")
+    parser.add_argument("--feature-store", default="./feature_store")
     parser.add_argument("--labels-file", default="data/sonar_labels.parquet",
-                        help="path relative to --feature-repo")
-    parser.add_argument("--model-dir", default="./model_feast")
+                        help="path relative to --feature-store")
+    parser.add_argument("--model-dir", default="./models/feast")
     parser.add_argument("--n-estimators", type=int, default=200)
     parser.add_argument("--max-depth", type=int, default=4)
     args = parser.parse_args()
@@ -45,11 +45,11 @@ def main():
     # The entity_df carries the entity keys, event timestamps, and labels
     # — Feast uses (signal_id, event_timestamp) to do point-in-time joins
     # with the FeatureView so no future data leaks into past examples.
-    labels_path = os.path.join(args.feature_repo, args.labels_file)
+    labels_path = os.path.join(args.feature_store, args.labels_file)
     entity_df = pd.read_parquet(labels_path)
     print(f"loaded {labels_path}: {len(entity_df)} rows")
 
-    store = FeatureStore(repo_path=args.feature_repo)
+    store = FeatureStore(repo_path=args.feature_store)
     print(f"feast store: {store.project} (registry={store.config.registry.path})")
 
     # Historical retrieval: features as of each entity_df row's
@@ -92,7 +92,7 @@ def main():
             "params": clf.get_params(),
             "weights_file": WEIGHTS_FILE,
             "feature_refs": FEATURE_REFS,
-            "feature_repo": os.path.abspath(args.feature_repo),
+            "feature_store": os.path.abspath(args.feature_store),
             "classes": [int(c) for c in clf.classes_.tolist()],
         })
 
@@ -121,7 +121,7 @@ def predict_one(model_dir, signal_id):
     a single entity, run the model. This is the path SageMaker / your
     inference container would take."""
     config = bundle.load_config(model_dir)
-    store = FeatureStore(repo_path=config["feature_repo"])
+    store = FeatureStore(repo_path=config["feature_store"])
     features = store.get_online_features(
         features=config["feature_refs"],
         entity_rows=[{"signal_id": signal_id}],

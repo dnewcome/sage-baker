@@ -135,7 +135,7 @@ train-lightgbm: ## Host-side LightGBM training
 	$(PY) src/train_lightgbm.py --train $(DATA_DIR) --model-dir ./models/lgb
 
 train-feast: ## Host-side sklearn + Feast (point-in-time historical join)
-	$(PY) src/train_feast.py --feature-repo ./feature_repo --model-dir ./models/feast
+	$(PY) src/train_feast.py --feature-store ./feature_store --model-dir ./models/feast
 
 # ---------- training (SageMaker Local Mode) ----------------------------
 
@@ -199,8 +199,8 @@ jupyter: ## Start Jupyter Lab (foreground; Ctrl-C to stop)
 	$(VENV)/bin/jupyter lab
 
 feast-apply: ## Register Feast entity/view + materialize features online
-	cd feature_repo && ../$(VENV)/bin/feast apply
-	cd feature_repo && ../$(VENV)/bin/feast materialize-incremental $$(date -u +%Y-%m-%dT%H:%M:%S)
+	cd feature_store && ../$(VENV)/bin/feast apply
+	cd feature_store && ../$(VENV)/bin/feast materialize-incremental $$(date -u +%Y-%m-%dT%H:%M:%S)
 
 # ---------- cleanup -----------------------------------------------------
 

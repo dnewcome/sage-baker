@@ -76,7 +76,7 @@ src/train_feast.py     sklearn trainer pulling features via Feast (point-in-time
 src/train_recommender.py recommender harness (currently used with the ALS plugin)
 src/plugins/           plugin system: base.py + default.py / housing.py / als.py
                        (auto-discovers extra files in src/plugins/private/, gitignored)
-feature_repo/          Feast feature definitions (entities.py, features.py, store.yaml)
+feature_store/          Feast feature definitions (entities.py, features.py, store.yaml)
 prep/prepare_data.py        writes data/iris.csv + lineage.json (toy multiclass dataset)
 prep/prepare_sonar.py       writes data/sonar.csv + Feast parquets + lineage.json
 prepare.py             plugin-aware prep dispatcher (`--plugin housing` etc.)
@@ -208,7 +208,7 @@ The model artifact (`model.tar.gz` containing `model.joblib`) lives under
 ```mermaid
 flowchart LR
   CSV[data/sonar.csv]
-  PQ[(feature_repo/<br/>parquets)]
+  PQ[(feature_store/<br/>parquets)]
 
   subgraph byoc_path["BYOC &nbsp;<i>drivers/local_train.py</i>"]
     direction TB
@@ -722,8 +722,8 @@ This prototype skips DynamoDB entirely.
 flowchart LR
   KAGGLE[Kaggle / UCI / ...<br/>CSV] --> PREP[prep/prepare_sonar.py]
   PREP --> CSV[data/sonar.csv<br/><i>non-Feast trainers</i>]
-  PREP --> FEAT[(feature_repo/<br/>sonar_features.parquet)]
-  PREP --> LBL[(feature_repo/<br/>sonar_labels.parquet)]
+  PREP --> FEAT[(feature_store/<br/>sonar_features.parquet)]
+  PREP --> LBL[(feature_store/<br/>sonar_labels.parquet)]
 
   APPLY["feast apply<br/><i>registers entity + view</i>"]
   FEAT -.-> APPLY
@@ -754,10 +754,10 @@ flowchart LR
 .venv/bin/python prep/prepare_sonar.py    # also writes feast parquets
 
 # register entities + feature views
-cd feature_repo && ../.venv/bin/feast apply && cd ..
+cd feature_store && ../.venv/bin/feast apply && cd ..
 
 # push features to the online store (run after data updates)
-cd feature_repo && ../.venv/bin/feast materialize-incremental \
+cd feature_store && ../.venv/bin/feast materialize-incremental \
     $(date -u +%Y-%m-%dT%H:%M:%S) && cd ..
 ```
 
@@ -841,7 +841,7 @@ Three changes when you move this to a SageMaker workflow:
 
 1. `feature_store.yaml`: `online_store.type` → `postgres` or `redis`,
    point at your RDS/ElastiCache endpoint.
-2. `feature_repo/features.py`: `FileSource(path=...)` → `s3://bucket/key`.
+2. `feature_store/features.py`: `FileSource(path=...)` → `s3://bucket/key`.
 3. The trainer image needs Feast installed and read access to the
    registry + offline store (S3 read perms, Postgres connect perms).
 
@@ -1436,7 +1436,7 @@ flowchart LR
 - **`bundle.py`, `tracking.py`**. Generic helpers; the env-var-gated
   MLflow integration just needs `MLFLOW_TRACKING_URI` set on the
   training container.
-- **`feature_repo/` source files**. Same Feast definitions; you swap
+- **`feature_store/` source files**. Same Feast definitions; you swap
   the storage backends in `feature_store.yaml`.
 
 ### What changes (in order of impact)

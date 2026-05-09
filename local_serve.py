@@ -78,7 +78,7 @@ def fetch_features_via_feast(cfg, signal_ids):
     historical join, not to paper over it here.
     """
     from feast import FeatureStore  # opt-in import
-    store = FeatureStore(repo_path=cfg["feature_repo"])
+    store = FeatureStore(repo_path=cfg["feature_store"])
     response = store.get_online_features(
         features=cfg["feature_refs"],
         entity_rows=[{"signal_id": sid} for sid in signal_ids],
@@ -132,7 +132,7 @@ def main():
         print(f"feast-backed bundle — looking up features for signal_ids={signal_ids}")
         X = fetch_features_via_feast(cfg, signal_ids)
         print(f"got {X.shape[0]} rows × {X.shape[1]} cols from feast online store")
-        labels = pd.read_parquet("feature_repo/data/sonar_labels.parquet")
+        labels = pd.read_parquet("feature_store/data/sonar_labels.parquet")
         y = labels.set_index("signal_id").loc[signal_ids, "target"].tolist()
         predictions = model.predict(X).tolist()
     else:
