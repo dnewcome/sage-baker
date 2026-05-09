@@ -95,15 +95,10 @@ evaluate.py            score a bundle against a holdout, write metrics.json
 deploy_endpoint.py     production endpoint deploy from a registered ModelPackage
 local_serve.py         host-side inference test — extracts a bundle, calls model_fn,
                        dispatches on framework + task, supports Feast online lookup
-requirements.txt       sagemaker<3, boto3, mlflow, scikit-learn, pandas, docker
-requirements-torch.txt opt-in extras for the torch example: torch, safetensors
-requirements-lightgbm.txt opt-in extras for the LightGBM example: lightgbm
-requirements-skops.txt    opt-in: skops (safer-pickle for sklearn)
-requirements-feast.txt opt-in extras for the Feast feature-store example
-requirements-bigquery.txt opt-in: google-cloud-bigquery + db-dtypes
-requirements-jupyter.txt  opt-in: jupyterlab + ipykernel + matplotlib + seaborn
-requirements-agent.txt    opt-in: anthropic SDK for the autoresearch-style agent
-requirements-dev.txt      pytest, for `make test`
+pyproject.toml         dependency groups (PEP 735): base + opt-in extras
+                       (torch, lightgbm, skops, feast, bigquery, jupyter,
+                        recommender, retrieval, agent, dev) — installed with
+                       `pip install --group <name>` or `make install-<name>`
 tests/                 smoke tests: bundle round-trip, plugin contract,
                        evaluate-signature dispatch, config-only rebuild,
                        lineage capture (run `make test`)
@@ -113,11 +108,12 @@ tests/                 smoke tests: bundle round-trip, plugin contract,
 
 The training script lives in `src/` so the DLC's `source_dir` can point at a
 clean directory containing only training code. SageMaker auto-`pip install`s
-any `requirements.txt` inside `source_dir`; if the project's outer
-`requirements.txt` (sagemaker, boto3, etc.) leaks into the container it
-upgrades numpy and binary-incompatibilizes the pre-installed sklearn/pandas.
-Don't put a `requirements.txt` inside `src/` unless you genuinely need extra
-deps in the training container.
+any `requirements.txt` inside `source_dir`; if the project's outer dependency
+list (sagemaker, boto3, etc. — now declared as the `base` group in
+`pyproject.toml`) leaks into the container it upgrades numpy and
+binary-incompatibilizes the pre-installed sklearn/pandas. Don't put a
+`requirements.txt` inside `src/` unless you genuinely need extra deps in the
+training container.
 
 The training script follows SageMaker conventions:
 
@@ -147,8 +143,9 @@ make install-all
 ```
 
 Equivalent without `make`: `python3 -m venv .venv && .venv/bin/pip
-install -r requirements.txt` plus any of the `requirements-*.txt`
-files you want.
+install --upgrade 'pip>=25.1' && .venv/bin/pip install --group base`,
+plus `--group <name>` for any extras you want (defined in
+`pyproject.toml`'s `[dependency-groups]`).
 
 ## Running training
 
@@ -437,7 +434,7 @@ Alternatives:
   underlying object format is still sklearn's. Wired in here as a
   swappable weights format:
   ```bash
-  .venv/bin/pip install -r requirements-skops.txt
+  .venv/bin/pip install --group skops
   .venv/bin/python src/train.py --train ./data --model-dir ./models/skops \
                                --weights-format skops
   .venv/bin/python local_serve.py --model-dir ./models/skops   # round-trips
@@ -471,7 +468,7 @@ load time, no version-coupling, no RCE risk. Wired in here as
 `src/train_lightgbm.py`:
 
 ```bash
-.venv/bin/pip install -r requirements-lightgbm.txt
+.venv/bin/pip install --group lightgbm
 .venv/bin/python src/train_lightgbm.py --train ./data --model-dir ./models/lgb
 .venv/bin/python local_serve.py --model-dir ./models/lgb   # round-trips
 ```
@@ -567,7 +564,7 @@ Either way, MLflow never touches your model class.
   bundle layout via `bundle.py`, exposes the *same* `model_fn(model_dir)`
   shape. Weights stored as `model.safetensors`. Run standalone with
   `python src/train_torch.py --train ./data --model-dir ./models/torch`
-  (install deps via `pip install -r requirements-torch.txt` first).
+  (install deps via `pip install --group torch` first).
 
 The two trainers prove the point: the `model_fn(model_dir) -> model`
 contract is identical across frameworks. The weights file format and the
@@ -750,7 +747,7 @@ flowchart LR
 ### Setup
 
 ```bash
-.venv/bin/pip install -r requirements-feast.txt
+.venv/bin/pip install --group feast
 .venv/bin/python prep/prepare_sonar.py    # also writes feast parquets
 
 # register entities + feature views
@@ -995,7 +992,7 @@ longer with table snapshots) this is byte-for-byte exact.
   | 100K rows        | ~10 s           | ~1 s            |
   | 10M rows         | minutes (often times out) | ~10–30 s, parallelizable |
 
-  Already in `requirements-bigquery.txt`. Needs the `bigquery.readSessions.create`
+  Already in the `bigquery` dependency group. Needs the `bigquery.readSessions.create`
   IAM permission on the service account (usually included in
   `roles/bigquery.user` or `roles/bigquery.dataViewer`); without it, the
   client falls back to REST and warns. Don't confuse with the **Storage
@@ -1172,7 +1169,7 @@ Once `.venv/` is set up, two extra steps make the whole project
 usable from notebooks:
 
 ```bash
-.venv/bin/pip install -r requirements-jupyter.txt
+.venv/bin/pip install --group jupyter
 .venv/bin/python -m ipykernel install --user --name sagebaker --display-name "Python (sagebaker)"
 .venv/bin/jupyter lab
 ```

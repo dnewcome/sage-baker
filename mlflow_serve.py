@@ -34,9 +34,8 @@ import mlflow.pyfunc
 import pandas as pd
 
 # BundleWrapper.load_context will call train.model_fn (or
-# train_lightgbm.model_fn / train_torch.model_fn) — those modules need
-# to be importable from sys.path.
-sys.path.insert(0, "src")
+# train_lightgbm.model_fn / train_torch.model_fn) — those modules are
+# importable venv-wide via the editable install of src/ contents.
 
 if not os.environ.get("MLFLOW_TRACKING_URI"):
     raise SystemExit("Set MLFLOW_TRACKING_URI first (e.g. http://127.0.0.1:5000)")

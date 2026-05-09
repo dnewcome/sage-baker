@@ -24,8 +24,7 @@ import importlib
 import pandas as pd
 import sklearn
 
-sys.path.insert(0, "src")
-import bundle  # type: ignore  # noqa: E402
+import bundle  # editable install registers src/ contents at venv top level
 
 # Each framework's trainer exposes its own model_fn. Dispatch by the
 # `framework` field in config.json so this script handles any bundle

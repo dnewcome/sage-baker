@@ -15,7 +15,7 @@ Loop:
 
 Prereqs:
   ANTHROPIC_API_KEY in .env (the Makefile auto-loads it into the kernel)
-  pip install -r requirements-agent.txt   # adds the anthropic SDK
+  pip install --group agent   # adds the anthropic SDK (or: make install-agent)
   data already prepared (`make data-sonar`)
   the plugin file under git (the agent reverts via `git checkout --`)
 
@@ -324,7 +324,7 @@ def main():
     try:
         from anthropic import Anthropic
     except ImportError:
-        sys.exit("install agent deps first: pip install -r requirements-agent.txt")
+        sys.exit("install agent deps first: pip install --group agent")
 
     program = read(args.program)
     client = Anthropic()

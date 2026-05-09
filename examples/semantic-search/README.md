@@ -55,7 +55,7 @@ output):
 | [`src/plugins/product_search.py`](../../src/plugins/product_search.py) | Retrieval plugin: title → vector, generic over catalog shape |
 | [`src/plugins/base_retrieval.py`](../../src/plugins/base_retrieval.py) | `RetrievalPlugin` base contract (prepare_corpus, build_embedder, build_index, query) |
 | [`src/train_retrieval.py`](../../src/train_retrieval.py) | Indexing harness — embed corpus in one batch, build FAISS, persist |
-| [`requirements-retrieval.txt`](../../requirements-retrieval.txt) | sentence-transformers + faiss-cpu |
+| [`pyproject.toml`](../../pyproject.toml) `retrieval` group | sentence-transformers + faiss-cpu (`pip install --group retrieval`) |
 | `models/search/` | Bundle output: `config.json`, `index.faiss`, `corpus.parquet`, `metadata.json` (gitignored) |
 
 ## Try it different ways

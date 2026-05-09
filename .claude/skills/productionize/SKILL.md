@@ -14,28 +14,28 @@ researcher a clean code-only path to lift into work code.
 
 ## When to invoke
 
-After `agent.py` (or `make train`) has produced a `model_<plugin>/` bundle
+After `agent.py` (or `make train`) has produced a `models/<plugin>/` bundle
 the researcher likes. Typical flow: agent converges → researcher wants to
 poke at the result, plot residuals, sanity-check it against fresh data,
 think about deployment. This skill creates that scratchpad.
 
 ## Arguments
 
-- No arg → use the most recently modified `model_*/` directory.
-- `<plugin>` → use `model_<plugin>/` (e.g. `productionize housing`).
+- No arg → use the most recently modified `models/*/` directory.
+- `<plugin>` → use `models/<plugin>/` (e.g. `productionize housing`).
 
 ## Steps
 
 1. **Identify the target bundle.** If an arg was passed, resolve to
-   `model_<arg>/`. Otherwise list `model_*/` and pick the one with the
+   `models/<arg>/`. Otherwise list `models/*/` and pick the one with the
    newest mtime. Fail gracefully if no bundle exists ("run `make train`
    first") or if `config.json` is missing.
 
 2. **Read the inputs:**
-   - `model_<plugin>/config.json` — `task`, `framework`,
+   - `models/<plugin>/config.json` — `task`, `framework`,
      `framework_version`, `estimator`, `estimator_module`, `params`,
      `feature_names`, `weights_file`, `metric_name`, optionally `classes`.
-   - `model_<plugin>/metadata.json` — metric value, `n_train`/`n_test`,
+   - `models/<plugin>/metadata.json` — metric value, `n_train`/`n_test`,
      `dataset_file`, optionally `data_lineage`.
    - `src/plugins/<plugin>.py` (or `src/plugins/private/<plugin>.py`) —
      so the notebook can reference `prepare()` / `build_model()` directly.
@@ -56,7 +56,7 @@ edit; code cells should be runnable end-to-end without changes.
 ### Header (markdown)
 ```
 # Productionize <plugin>
-Generated <YYYY-MM-DD> from `model_<plugin>/`.
+Generated <YYYY-MM-DD> from `models/<plugin>/`.
 - task: <classification|regression>
 - estimator: <ClassName> from <module>
 - metric: <metric_name>=<value> on <n_test> test rows
@@ -68,18 +68,21 @@ This notebook is a *starting point* — edit freely.
 
 ### Setup (code)
 ```python
-import os, sys, json
+import os, json
 if os.path.basename(os.getcwd()) == 'notebooks':
     os.chdir('..')
-sys.path.insert(0, 'src')
 %load_ext autoreload
 %autoreload 2
 ```
 
+(`src/` contents — `bundle`, `train`, `plugins`, etc. — are import-resolvable
+venv-wide via `pip install -e .`, declared in `pyproject.toml`. No
+`sys.path.insert` needed.)
+
 ### Inspect the bundle (code)
 ```python
-config = json.loads(open('model_<plugin>/config.json').read())
-metadata = json.loads(open('model_<plugin>/metadata.json').read())
+config = json.loads(open('models/<plugin>/config.json').read())
+metadata = json.loads(open('models/<plugin>/metadata.json').read())
 print(json.dumps(config, indent=2)[:500])
 print('---')
 print(json.dumps(metadata, indent=2)[:500])
@@ -131,7 +134,7 @@ proves the config-only rebuild is faithful.
 
 ```python
 import joblib
-model_from_bundle = joblib.load('model_<plugin>/model.joblib')
+model_from_bundle = joblib.load('models/<plugin>/model.joblib')
 
 # For classification, compare probabilities; for regression, predictions.
 if config['task'] == 'classification' and hasattr(model_from_bundle, 'predict_proba'):
@@ -220,10 +223,9 @@ top-10 horizontal bar chart with `config['feature_names']` as labels.
   inspect the bundle before generating the notebook. This is useful
   for filling in things like the metric value in markdown cells.
 
-- Don't add cells that depend on packages outside `requirements.txt`
-  / `requirements-*.txt`. If the plugin uses LightGBM, surface that
-  via the existing `requirements-lightgbm.txt`, don't introduce new
-  deps.
+- Don't add cells that depend on packages outside the dependency
+  groups in `pyproject.toml`. If the plugin uses LightGBM, surface
+  that via the existing `lightgbm` group, don't introduce new deps.
 
 - Keep the notebook short — ~15 cells. The researcher will add their
   own; don't pre-fill speculative analysis.

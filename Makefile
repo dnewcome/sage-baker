@@ -25,43 +25,47 @@ help: ## Show available targets
 
 # ---------- setup -------------------------------------------------------
 
+# Dependency groups live in pyproject.toml ([dependency-groups], PEP 735).
+# Requires pip >= 25.1.
+
 install: ## Create venv and install base requirements
 	python3 -m venv $(VENV)
-	$(PIP) install --upgrade pip
-	$(PIP) install -r requirements.txt
+	$(PIP) install --upgrade 'pip>=25.1'
+	$(PIP) install --group base
 
 install-torch: ## Install torch + safetensors extras
-	$(PIP) install -r requirements-torch.txt
+	$(PIP) install --group torch
 
 install-lightgbm: ## Install LightGBM extras
-	$(PIP) install -r requirements-lightgbm.txt
+	$(PIP) install --group lightgbm
 
 install-skops: ## Install skops (safer-pickle for sklearn)
-	$(PIP) install -r requirements-skops.txt
+	$(PIP) install --group skops
 
 install-feast: ## Install Feast feature-store extras
-	$(PIP) install -r requirements-feast.txt
+	$(PIP) install --group feast
 
 install-bigquery: ## Install BigQuery extras
-	$(PIP) install -r requirements-bigquery.txt
+	$(PIP) install --group bigquery
 
 install-jupyter: ## Install Jupyter and register the project kernel
-	$(PIP) install -r requirements-jupyter.txt
+	$(PIP) install --group jupyter
 	$(PY) -m ipykernel install --user --name sagebaker --display-name "Python (sagebaker)"
 
 install-recommender: ## Install recommender extras (implicit, scipy, pyarrow)
-	$(PIP) install -r requirements-recommender.txt
+	$(PIP) install --group recommender
 
 install-retrieval: ## Install semantic-search extras (sentence-transformers, faiss-cpu)
-	$(PIP) install -r requirements-retrieval.txt
+	$(PIP) install --group retrieval
 
 install-agent: ## Install autoresearch-style agent extras (anthropic SDK)
-	$(PIP) install -r requirements-agent.txt
+	$(PIP) install --group agent
 
 install-dev: ## Install dev tooling (pytest)
-	$(PIP) install -r requirements-dev.txt
+	$(PIP) install --group dev
 
-install-all: install install-torch install-lightgbm install-skops install-feast install-bigquery install-recommender install-agent install-jupyter install-dev ## Install everything
+install-all: ## Install everything (every dependency group)
+	$(PIP) install --group all
 
 # ---------- data prep ---------------------------------------------------
 

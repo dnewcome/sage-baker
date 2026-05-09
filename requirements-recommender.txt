@@ -1,9 +1,0 @@
-# Recommender training extras — required for CLHPlugin and train_recommender.py
-# Install with: make install-recommender
-#
-# implicit: ALS collaborative filtering (training only — inference uses raw numpy)
-# scipy:    sparse matrix support for the interaction matrix
-# pyarrow:  parquet I/O for entity/item index tables in the bundle
-implicit>=0.7.2
-scipy>=1.7.0
-pyarrow>=12.0.0

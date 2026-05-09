@@ -112,7 +112,7 @@ class ALSWrapper:
         if not _HAS_IMPLICIT:
             raise ImportError(
                 "implicit is required for ALS training. "
-                "Run: pip install -r requirements-recommender.txt"
+                "Run: pip install --group recommender"
             )
         model = AlternatingLeastSquares(
             factors=self.factors,

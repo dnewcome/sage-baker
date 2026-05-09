@@ -20,7 +20,7 @@ recorded snapshot_timestamp (within BQ's time-travel window — 7 days by
 default, longer with table snapshots) and verify the sha256 matches.
 
 Prereqs:
-    .venv/bin/pip install -r requirements-bigquery.txt
+    .venv/bin/pip install --group bigquery
     gcloud auth application-default login
     # or: export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json
 
@@ -70,7 +70,7 @@ def main():
         from google.cloud import bigquery
     except ImportError:
         raise SystemExit(
-            "Install BigQuery deps first: pip install -r requirements-bigquery.txt"
+            "Install BigQuery deps first: pip install --group bigquery"
         )
 
     DATA_DIR = os.path.dirname(args.output) or "data"

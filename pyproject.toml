@@ -1,0 +1,100 @@
+# pyproject.toml — dependency groups (PEP 735) + editable install glue.
+#
+# Two responsibilities:
+#   1. Declare deps in [dependency-groups]; install with
+#      `pip install --group <name>` (pip ≥ 25.1) or `make install-<name>`.
+#   2. Register src/ contents as importable via `pip install -e .` so
+#      `import bundle`, `import tracking`, `from plugins import ...` work
+#      from anywhere in the venv — no sys.path.insert hacks needed in
+#      notebooks, host-side serving, or tests.
+#
+# Trainers in src/ keep their flat `import bundle` style (load-bearing
+# for SageMaker source_dir="src": the container unpacks contents flat,
+# so trainer code can't use package-qualified imports there).
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sagebaker"
+version = "0.1.0"
+description = "ML pipeline sandbox: bundle architecture, MLflow/Feast/BigQuery integration, agent loop"
+requires-python = ">=3.10"
+
+[tool.setuptools]
+# src/ contents become top-level importable. py-modules lists the
+# bare .py files; packages discovers the plugins sub-package.
+package-dir = {"" = "src"}
+py-modules = [
+    "bundle",
+    "tracking",
+    "train",
+    "train_feast",
+    "train_lightgbm",
+    "train_recommender",
+    "train_retrieval",
+    "train_torch",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["plugins*"]
+
+[dependency-groups]
+
+base = [
+    "sagemaker>=2.230,<3",
+    "boto3",
+    "docker",
+    "mlflow>=2.10",
+    # Pin sklearn to match the BYOC Dockerfile so host-side loaders
+    # (evaluate.py, local_serve.py, mlflow_serve.py) can read tarballs
+    # trained inside the container. Bumping this requires bumping the
+    # Dockerfile in lockstep.
+    "scikit-learn==1.3.2",
+    "pandas",
+]
+
+torch = ["torch>=2", "safetensors>=0.4"]
+
+lightgbm = ["lightgbm>=4"]
+
+skops = ["skops>=0.10"]
+
+feast = ["feast>=0.40", "pyarrow"]
+
+bigquery = [
+    "google-cloud-bigquery>=3",
+    "google-cloud-bigquery-storage>=2",
+    "db-dtypes",
+    "pyarrow",
+]
+
+jupyter = ["jupyterlab", "ipykernel", "matplotlib", "seaborn", "bigquery-magics"]
+
+# Recommender training extras — required for CLHPlugin and train_recommender.py
+#   implicit: ALS collaborative filtering (training only — inference uses raw numpy)
+#   scipy:    sparse matrix support for the interaction matrix
+#   pyarrow:  parquet I/O for entity/item index tables in the bundle
+recommender = ["implicit>=0.7.2", "scipy>=1.7.0", "pyarrow>=12.0.0"]
+
+retrieval = ["sentence-transformers>=2.7", "faiss-cpu>=1.8"]
+
+agent = ["anthropic>=0.40"]
+
+dev = ["pytest>=8"]
+
+all = [
+    {include-group = "base"},
+    {include-group = "torch"},
+    {include-group = "lightgbm"},
+    {include-group = "skops"},
+    {include-group = "feast"},
+    {include-group = "bigquery"},
+    {include-group = "jupyter"},
+    {include-group = "recommender"},
+    {include-group = "retrieval"},
+    {include-group = "agent"},
+    {include-group = "dev"},
+]

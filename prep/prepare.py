@@ -14,10 +14,6 @@ import argparse
 import os
 import sys
 
-# Allow running from the repo root without installing the package.
-# This file lives in prep/, so src/ is one directory up.
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-
 from plugins import get_plugin, get_recommender_plugin, list_plugins, list_recommender_plugins
 
 

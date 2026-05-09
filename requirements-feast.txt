@@ -1,2 +1,0 @@
-feast>=0.40
-pyarrow
