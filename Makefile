@@ -55,7 +55,10 @@ install-recommender: ## Install recommender extras (implicit, scipy, pyarrow)
 install-agent: ## Install autoresearch-style agent extras (anthropic SDK)
 	$(PIP) install -r requirements-agent.txt
 
-install-all: install install-torch install-lightgbm install-skops install-feast install-bigquery install-recommender install-agent install-jupyter ## Install everything
+install-dev: ## Install dev tooling (pytest)
+	$(PIP) install -r requirements-dev.txt
+
+install-all: install install-torch install-lightgbm install-skops install-feast install-bigquery install-recommender install-agent install-jupyter install-dev ## Install everything
 
 # ---------- data prep ---------------------------------------------------
 
@@ -131,6 +134,9 @@ demo-categorical: ## Demo: 'new enum value at inference' bug + 3 fixes
 
 agent: ## autoresearch-style agent loop — edits src/plugins/default.py iteratively
 	$(PY) agent.py
+
+test: ## Run smoke test suite (bundle round-trip, plugin contract, etc.)
+	$(VENV)/bin/pytest tests/ -q
 
 # ---------- infrastructure (long-running processes) --------------------
 

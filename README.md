@@ -64,6 +64,10 @@ requirements-feast.txt opt-in extras for the Feast feature-store example
 requirements-bigquery.txt opt-in: google-cloud-bigquery + db-dtypes
 requirements-jupyter.txt  opt-in: jupyterlab + ipykernel + matplotlib + seaborn
 requirements-agent.txt    opt-in: anthropic SDK for the autoresearch-style agent
+requirements-dev.txt      pytest, for `make test`
+tests/                 smoke tests: bundle round-trip, plugin contract,
+                       evaluate-signature dispatch, config-only rebuild,
+                       lineage capture (run `make test`)
 .claude/skills/        Claude Code skills shipped with the repo
                        (e.g. `/productionize` — agent run → starter notebook)
 ```
