@@ -92,7 +92,8 @@ def strip_fences(text):
     return text.strip()
 
 
-def propose(client, program, plugin_path, plugin_src, history, best):
+def propose(client, program, plugin_path, plugin_src, history, best,
+            iters_since_improvement):
     """Ask the model for a new plugin version.
 
     History is summarized with a short hash of each prior proposal so
@@ -120,6 +121,24 @@ def propose(client, program, plugin_path, plugin_src, history, best):
 
     best_str = f"{best:.4f}" if best > -float("inf") else "no successful runs yet"
 
+    # When the LLM has been hill-climbing the same model family and
+    # plateaued, push it to try something qualitatively different —
+    # otherwise it tends to keep tweaking hyperparameters of whatever
+    # achieved the early best.
+    stuck_clause = ""
+    if iters_since_improvement >= 3:
+        stuck_clause = (
+            f"\n4. **Stuck signal: {iters_since_improvement} iterations "
+            f"since last improvement.** Stop tweaking hyperparameters of "
+            f"the current model — that's hit a local optimum. This "
+            f"iteration MUST try something qualitatively different: a "
+            f"different model class (RandomForest → GradientBoosting → "
+            f"SVM → LogisticRegression on engineered features), a "
+            f"fundamentally different preprocessing pipeline (PCA, "
+            f"StandardScaler + PolynomialFeatures, target encoding for "
+            f"any categoricals), or a different feature engineering "
+            f"approach. Bigger structural change, not smaller tweaks.")
+
     prompt = f"""{program}
 
 # Current plugin source ({plugin_path}):
@@ -131,6 +150,7 @@ def propose(client, program, plugin_path, plugin_src, history, best):
 {history_summary}
 
 # Best metric so far: {best_str}
+# Iterations since last improvement: {iters_since_improvement}
 
 # Mandatory constraints
 
@@ -144,7 +164,7 @@ def propose(client, program, plugin_path, plugin_src, history, best):
    intended change against the proposal_hash list above; if you would
    end up with one of those, propose something else.
 3. The harness measures success by the metric line `validation_<name>=`
-   in stdout — change something the metric will actually respond to.
+   in stdout — change something the metric will actually respond to.{stuck_clause}
 
 Output a COMPLETE new version of the plugin file. Plain Python source.
 No markdown fences, no commentary, no diff format — just the file."""
@@ -262,74 +282,92 @@ def main():
     # making the same mistake.
     history = []
     best = baseline_metric
+    iters_since_improvement = 0
 
-    for i in range(1, args.max_iterations + 1):
-        elapsed = time.time() - start
-        if elapsed > args.budget_seconds:
-            print(f"budget exhausted at iteration {i}")
-            break
-        print(f"\n===== iteration {i}  best={best:.4f}  elapsed={int(elapsed)}s =====")
+    interrupted = False
+    try:
+        for i in range(1, args.max_iterations + 1):
+            elapsed = time.time() - start
+            if elapsed > args.budget_seconds:
+                print(f"budget exhausted at iteration {i}")
+                break
+            stuck = (f" stuck={iters_since_improvement}"
+                     if iters_since_improvement >= 3 else "")
+            print(f"\n===== iteration {i}  best={best:.4f}  "
+                  f"elapsed={int(elapsed)}s{stuck} =====")
 
-        plugin_src = read(args.plugin)
+            plugin_src = read(args.plugin)
 
-        try:
-            proposal = propose(client, program, args.plugin, plugin_src, history, best)
-        except Exception as e:
-            print(f"  LLM call failed: {e}")
-            history.append(("", -1.0, False, f"LLM call failed: {e}"))
-            continue
+            try:
+                proposal = propose(client, program, args.plugin, plugin_src,
+                                   history, best, iters_since_improvement)
+            except Exception as e:
+                print(f"  LLM call failed: {e}")
+                history.append(("", -1.0, False, f"LLM call failed: {e}"))
+                iters_since_improvement += 1
+                continue
 
-        if not syntax_ok(proposal):
-            why = "proposal failed Python syntax check (ast.parse raised)"
-            print(f"  {why}; reverting")
-            history.append((proposal, -1.0, False, why))
-            continue
+            if not syntax_ok(proposal):
+                why = "proposal failed Python syntax check (ast.parse raised)"
+                print(f"  {why}; reverting")
+                history.append((proposal, -1.0, False, why))
+                iters_since_improvement += 1
+                continue
 
-        if proposal.strip() == plugin_src.strip():
-            why = ("proposal was byte-identical to the current plugin — "
-                   "you must change something each iteration")
-            print(f"  {why}")
-            history.append((proposal, -1.0, False, why))
-            continue
+            if proposal.strip() == plugin_src.strip():
+                why = ("proposal was byte-identical to the current plugin — "
+                       "you must change something each iteration")
+                print(f"  {why}")
+                history.append((proposal, -1.0, False, why))
+                iters_since_improvement += 1
+                continue
 
-        write(args.plugin, proposal)
-        print(f"  wrote new plugin (hash={src_hash(proposal)})")
-        print(show_diff(plugin_src, proposal))
+            write(args.plugin, proposal)
+            print(f"  wrote new plugin (hash={src_hash(proposal)})")
+            print(show_diff(plugin_src, proposal))
 
-        result = subprocess.run(
-            train_cmd, capture_output=True, text=True, env=os.environ.copy()
-        )
-        if result.returncode != 0:
-            err_tail = (result.stderr or result.stdout)[-500:].strip()
-            why = f"training failed (exit {result.returncode}). last stderr/stdout:\n{err_tail}"
-            print(f"  training failed (exit {result.returncode}); reverting")
-            print(f"  last stderr: {err_tail[-300:]}")
-            revert(args.plugin)
-            history.append((proposal, -1.0, False, why))
-            continue
+            result = subprocess.run(
+                train_cmd, capture_output=True, text=True, env=os.environ.copy()
+            )
+            if result.returncode != 0:
+                err_tail = (result.stderr or result.stdout)[-500:].strip()
+                why = f"training failed (exit {result.returncode}). last stderr/stdout:\n{err_tail}"
+                print(f"  training failed (exit {result.returncode}); reverting")
+                print(f"  last stderr: {err_tail[-300:]}")
+                revert(args.plugin)
+                history.append((proposal, -1.0, False, why))
+                iters_since_improvement += 1
+                continue
 
-        metric = parse_metric(result.stdout, args.metric)
-        if metric is None:
-            why = (f"training succeeded but no validation_<name>=… line in stdout "
-                   f"(expected pattern '{args.metric or 'validation_<anything>'}')")
-            print(f"  {why}; reverting")
-            revert(args.plugin)
-            history.append((proposal, -1.0, False, why))
-            continue
+            metric = parse_metric(result.stdout, args.metric)
+            if metric is None:
+                why = (f"training succeeded but no validation_<name>=… line in stdout "
+                       f"(expected pattern '{args.metric or 'validation_<anything>'}')")
+                print(f"  {why}; reverting")
+                revert(args.plugin)
+                history.append((proposal, -1.0, False, why))
+                iters_since_improvement += 1
+                continue
 
-        keep = metric > best
-        print(f"  metric={metric:.4f} → {'KEEP' if keep else 'REVERT'}")
-        if keep:
-            best = metric
-            history.append((proposal, metric, True, None))
-        else:
-            revert(args.plugin)
-            why = (f"metric {metric:.4f} did not beat current best "
-                   f"{best:.4f}")
-            history.append((proposal, metric, False, why))
+            keep = metric > best
+            print(f"  metric={metric:.4f} → {'KEEP' if keep else 'REVERT'}")
+            if keep:
+                best = metric
+                iters_since_improvement = 0
+                history.append((proposal, metric, True, None))
+            else:
+                revert(args.plugin)
+                iters_since_improvement += 1
+                why = (f"metric {metric:.4f} did not beat current best "
+                       f"{best:.4f}")
+                history.append((proposal, metric, False, why))
+    except KeyboardInterrupt:
+        interrupted = True
+        print("\n\n  Ctrl-C — stopping the loop, working tree is at the current best.")
 
     kept = sum(1 for entry in history if entry[2])
-    print(f"\n===== done =====")
+    header = "interrupted" if interrupted else "done"
+    print(f"\n===== {header} =====")
     print(f"  iterations: {len(history)} ({kept} kept, {len(history) - kept} reverted)")
     print(f"  best metric: {best:.4f}" if best > -float("inf") else "  no successful runs")
     print(f"  final plugin: {args.plugin} (whatever's currently checked out)")
