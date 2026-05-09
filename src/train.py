@@ -104,10 +104,18 @@ def main():
 
         # The plugin owns the metric — accuracy / ROC-AUC for
         # classification, R² for regression by default. Higher is
-        # better, by convention. The plugin gets the model itself so
-        # it can use predict_proba when probability-based metrics
-        # (AUC, log-loss) give it more granular signal.
-        metric_name, metric_value = plugin.evaluate(clf, X_test, y_test)
+        # better, by convention.
+        #
+        # We tolerate two evaluate() signatures so old plugins still
+        # work and the agent's regenerated plugins can use either:
+        #   new: evaluate(model, X_test, y_true)   ← can use predict_proba
+        #   old: evaluate(y_true, y_pred)           ← simpler, predictions only
+        import inspect
+        n_params = len(inspect.signature(plugin.evaluate).parameters)
+        if n_params >= 3:
+            metric_name, metric_value = plugin.evaluate(clf, X_test, y_test)
+        else:
+            metric_name, metric_value = plugin.evaluate(y_test, clf.predict(X_test))
         print(f"{metric_name}={metric_value:.4f}")
         tracking.log_metrics({metric_name: metric_value})
 
