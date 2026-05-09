@@ -264,4 +264,9 @@ class ClickstreamPlugin(TrainingPlugin):
         )
 
     def extra_config(self, model, X: pd.DataFrame) -> dict:
-        return {}
+        # ~6% positive class — default 0.5 threshold is too conservative
+        # and produces near-zero recall. 0.15 gives a more balanced
+        # precision/recall split. Tune per deployment context by editing
+        # `prediction_threshold` in the bundle's config.json (no retrain
+        # needed) — the wrapper / loader reads it at inference time.
+        return {"prediction_threshold": 0.15}

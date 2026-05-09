@@ -79,10 +79,30 @@ def register_bundle_as_pyfunc(model_dir, model_fn, registered_name=None,
     # model class is reconstructed via their model_fn at load time.
     class BundleWrapper(mlflow.pyfunc.PythonModel):
         def load_context(self, context):
-            self._model = model_fn(context.artifacts["bundle"])
+            import json
+            import os
+            bundle_dir = context.artifacts["bundle"]
+            self._model = model_fn(bundle_dir)
+            with open(os.path.join(bundle_dir, "config.json")) as f:
+                config = json.load(f)
+            # Threshold lives in config.json so it travels with the
+            # bundle through every serving path (MLflow, SageMaker,
+            # local_serve), not just MLflow's wrapper. Default 0.5 keeps
+            # back-compat with bundles that don't set it. Tune for
+            # imbalanced classes (e.g. 0.15 for a 6%-positive problem).
+            self._threshold = float(config.get("prediction_threshold", 0.5))
+            self._task = config.get("task", "classification")
 
-        def predict(self, context, model_input):
-            return self._model.predict(model_input)
+        def predict(self, context, model_input, params=None):
+            # Regression / non-probabilistic models: pass through.
+            if self._task != "classification" or not hasattr(self._model, "predict_proba"):
+                return self._model.predict(model_input)
+            proba = self._model.predict_proba(model_input)
+            # Multiclass: predict_proba threshold doesn't apply; argmax via predict.
+            if proba.shape[1] != 2:
+                return self._model.predict(model_input)
+            # Binary: apply the configured threshold for class output.
+            return (proba[:, 1] >= self._threshold).astype(int)
 
     return mlflow.pyfunc.log_model(
         artifact_path=artifact_path,
