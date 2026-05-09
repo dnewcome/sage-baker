@@ -48,13 +48,31 @@ Only `src/plugins/clickstream.py`. The plugin must remain a
 
 ## What you must not do
 
-- **Don't introduce post-decision event types as features.**
-  `add_to_cart`, `checkout`, and `conversion` events are
-  deterministically appended by the simulator to converting sessions.
-  Counting them gives a trivial 1.0-AUC model that learned the
-  simulator's funnel shape, not anything generalizable. The current
-  `_PRE_DECISION_EVENT_TYPES = ("page_view", "click")` constant
-  enforces this — keep it that way.
+- **Don't introduce any feature that encodes the post-decision event
+  count, directly or indirectly.** The simulator deterministically
+  appends `add_to_cart`, `checkout`, and `conversion` events to
+  converting sessions, and *zero* such events to non-converting ones.
+  Any feature that recovers this count = a trivial 1.0-AUC model
+  that learned the simulator's funnel shape, not generalizable signal.
+
+  Specifically forbidden — these all leak:
+  - Counting `add_to_cart`, `checkout`, or `conversion` events as features.
+  - `total_events_per_session` (raw count from `df`, not filtered by
+    `_PRE_DECISION_EVENT_TYPES`). This *includes* post-decision events.
+  - `total_events − n_pre_events` or any equivalent subtraction. This
+    IS the post-decision count by construction.
+  - `value` summed/maxed per session — `value > 0` only on conversion
+    events.
+  - `df["event_type"].nunique()` per session — converting sessions have
+    more event types.
+  - Any aggregation over the *full* `df` rather than the pre-decision
+    subset. Compute features only from `pre = df[df["event_type"].isin(_PRE_DECISION_EVENT_TYPES)]`.
+
+  Sanity check: after `prepare(df)`, run the model on a held-out split
+  and look at `feature_importances_`. If any single feature alone
+  gives >0.95 AUC, you have a leak — stop and remove it. The honest
+  baseline on this dataset sits around 0.74; anything above ~0.85 is
+  almost certainly leakage.
 - Don't peek at `ground_truth.parquet` — it's not loaded by the
   harness, but you also can't try to.
 - Don't drop the session aggregation; the target is per-session, so
