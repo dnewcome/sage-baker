@@ -188,6 +188,136 @@ Listed in rough value × ease order; pick whatever the next push needs.
 
 ---
 
+## Phase 5 — LLM fine-tune sandbox (planned, not committed)
+
+Goal: prove sagebaker's bundle/productionize patterns extend to a
+LoRA-fine-tuned open-weights LLM, end-to-end, deployed via SageMaker.
+Frame the work as "what's the smallest demo that lets us evaluate
+whether this is worth productizing for the company?" Keep the agent
+loop out — LLM training iterations are too slow for that scope.
+
+### Phase 5a — Classification fine-tune (start here)
+
+**Use case (TBD, pick one):**
+- Ticket / email routing — multi-class over internal categories
+- Field extraction — structured JSON from semi-structured docs
+- Entity resolution — pair-level "same canonical?" (extends the
+  existing `product_matcher` plugin with title-LLM features)
+
+The classification angle maps cleanly to the existing
+`TrainingPlugin` contract — output is a class label, evaluation is
+accuracy/F1, predict-proba semantics survive. Lowest-risk on-ramp.
+
+**Model + training stack:**
+- Base: 3B–8B open weights (Llama 3.1 8B Instruct, Qwen 2.5 7B,
+  or Mistral 7B). Pin one once the use case is locked.
+- Adapter: LoRA via `peft` — only adapter weights trained,
+  ~10–50 MB instead of the 14 GB base.
+- Trainer: HuggingFace `Trainer` + `accelerate`, single-GPU
+  (A10G or L4 fits a 7B-with-LoRA at batch 1–4).
+- Container: HuggingFace SageMaker DLC (skip BYOC for this phase
+  unless DLC version pins block us).
+
+**New bundle contract (the interesting part):**
+
+```
+models/<plugin>/
+├── config.json           ← base_model_id, peft_config (rank/alpha/targets),
+│                           label_map, tokenizer_name, max_seq_len,
+│                           weights_format: "lora-adapter"
+├── metadata.json         ← training_tokens, training_seconds,
+│                           hardware, eval metric, lineage
+├── adapter_model.safetensors  ← LoRA weights only
+└── tokenizer/            ← tokenizer.json + special_tokens_map
+```
+
+`model_fn(model_dir)` dispatches on `weights_format == "lora-adapter"`
+→ load base from HF cache, apply adapter, return a wrapper exposing
+sklearn-compatible `predict` / `predict_proba`. Base model isn't
+bundled (multi-GB) — the inference container caches it once and
+reuses across requests.
+
+**Files to add:**
+- `src/plugins/llm_classifier.py` — `LlmClassifierPlugin`
+- `src/train_llm.py` — HF Trainer + PEFT driver
+- `prep/prepare_<usecase>.py` — dataset prep → parquet with
+  `text` + `label`
+- `pyproject.toml` `[dependency-groups] llm` —
+  `transformers`, `peft`, `accelerate`, `datasets`, `bitsandbytes`
+  (4-bit base loading), `sentencepiece`
+- `Makefile` targets: `data-<usecase>`, `train-llm`, `install-llm`
+
+**Files to modify:**
+- `src/bundle.py` — handle `lora-adapter` weights format
+- `local_serve.py` — dispatch on `lora-adapter` (route to the new
+  plugin's `model_fn`)
+- `src/plugins/base.py` — no change anticipated; the classification
+  contract should still fit
+
+**Deploy path:**
+1. Train via `src/train_llm.py` on a SageMaker Training Job (HF DLC,
+   single `g5.2xlarge` or `g6.2xlarge`).
+2. Bundle uploaded to S3.
+3. Deploy via the existing `deploy_endpoint.py` flow but with the
+   HF inference DLC and a custom `inference.py` that runs the
+   plugin's `model_fn` + `predict`.
+4. Smoke-test against `local_serve.py` first (loads adapter into a
+   local base model) — same script that handles the sklearn case
+   today.
+
+**Smoke test (the experiment's success criterion):**
+```bash
+make data-<usecase>          # 1000-row dataset, 5–10 classes
+make install-llm
+make train-llm               # ~30 min on a single A10G; LoRA only
+make serve MODEL_DIR=./models/llm-<usecase>
+# query with a few held-out examples; eyeball accuracy
+.venv/bin/python evaluate.py --model ./models/llm-<usecase> --test ./data
+cat ./eval/llm-<usecase>/metrics.json
+```
+
+Bundle shape proves out, contract changes stay minimal, deploy path
+matches the sklearn case.
+
+### Phase 5b — Generative assistant (deferred)
+
+Out of scope for the first experiment. If 5a goes well, the natural
+follow-on is a generative use case (internal Q&A, code helper, draft
+generation). What would need to change:
+
+- **Plugin contract** — `predict` doesn't fit; need `generate(prompt,
+  max_tokens, ...)`. Possibly a new base class `GenerativePlugin`.
+- **Bundle weights** — adapter alone may not suffice; could need a
+  merged-and-quantized full model for inference (4–8 GB instead of
+  10s of MB). Re-think `weights_format`.
+- **Serving** — vLLM or TGI on a dedicated GPU instance, not the HF
+  inference DLC. Streaming responses need a different `model_fn`
+  contract (yield tokens, don't return a single prediction).
+- **Evaluation** — accuracy doesn't apply. Use `lm-evaluation-harness`
+  for benchmarks, or human eval on a held-out task set. Not a
+  single-metric agent loop.
+- **Cost** — generative inference is meaningfully more expensive than
+  classification; budget the experiment differently.
+
+Don't start 5b until 5a's bundle/deploy contract is locked in. The
+risk: if 5a doesn't ship cleanly, 5b's added complexity hides the
+underlying question (does the bundle pattern extend at all?).
+
+### Out of scope this phase (5a + 5b both)
+
+- **Pretraining from scratch** — wrong tool entirely; use Megatron-LM
+  / NeMo / Composer.
+- **Multi-GPU / distributed training** — 7B LoRA fits on a single
+  A10G; if it doesn't, re-scope.
+- **RAG / vector store** — orthogonal to fine-tuning. The retrieval
+  plugin already exists for that path.
+- **Prompt engineering vs. fine-tune comparison** — interesting but
+  scope creep. Pick one for the experiment.
+- **Model merging / model souping** — research-y, not productizable
+  yet, and wouldn't match the bundle shape cleanly.
+
+---
+
 ## Out of scope for the foreseeable future
 
 - **Hyperparameter tuning beyond agent.py** — Optuna / sklearn
