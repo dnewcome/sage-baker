@@ -9,7 +9,7 @@ bundle directly off disk and calls model_fn, this:
 
 This is what "model.deploy driver" means in the README — a small wrapper
 that calls the SageMaker SDK's `model.deploy()`. Same shape as
-`local_train_dlc.py` is for training.
+`drivers/local_train_dlc.py` is for training.
 
 Usage:
     python deploy_endpoint.py \\

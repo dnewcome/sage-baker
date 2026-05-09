@@ -99,7 +99,7 @@ data-bigquery: ## Materialize a BigQuery query (default: public iris dataset)
 	$(PY) prep/prepare_bigquery.py
 
 bq-upload-sonar: ## Upload data/sonar.csv to BQ as $PROJECT.sage_baker.sonar
-	$(PY) upload_sonar_to_bq.py
+	$(PY) tools/upload_sonar_to_bq.py
 
 bq-data-sonar: ## Materialize the sonar table back from BQ (after bq-upload-sonar)
 	$(PY) prep/prepare_bigquery.py \
@@ -143,13 +143,13 @@ image: ## Build the BYOC training image
 	docker build -t sage-baker-sklearn:latest .
 
 train-byoc: image ## SageMaker Local Mode + local BYOC image (no AWS account)
-	$(PY) local_train.py
+	$(PY) drivers/local_train.py
 
 train-dlc: ## SageMaker Local Mode + AWS sklearn DLC (needs AWS creds + ECR perms)
-	$(PY) local_train_dlc.py
+	$(PY) drivers/local_train_dlc.py
 
 train-feast-dlc: ## SageMaker Local Mode DLC + Feast pre-fetch (needs AWS creds)
-	$(PY) local_train_feast_dlc.py
+	$(PY) drivers/local_train_feast_dlc.py
 
 # ---------- inference ---------------------------------------------------
 
@@ -174,7 +174,7 @@ mlflow-serve-http: ## HTTP scoring server: curl POST to localhost:5001/invocatio
 	  --env-manager local
 
 demo-categorical: ## Demo: 'new enum value at inference' bug + 3 fixes
-	$(PY) demo_categorical.py
+	$(PY) tools/demo_categorical.py
 
 agent: ## autoresearch-style agent loop — edits src/plugins/default.py iteratively
 	$(PY) agent.py

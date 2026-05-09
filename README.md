@@ -23,10 +23,10 @@ auth token to issue the pull).
 
 This project supports both:
 
-- **BYOC** (`local_train.py`) — small local image, follows the algorithm
+- **BYOC** (`drivers/local_train.py`) — small local image, follows the algorithm
   container contract (a `train` command on `PATH` reading `/opt/ml/input/`
   and writing `/opt/ml/model/`). Fully offline. No AWS account needed.
-- **DLC** (`local_train_dlc.py`) — official AWS scikit-learn DLC image.
+- **DLC** (`drivers/local_train_dlc.py`) — official AWS scikit-learn DLC image.
   Requires real AWS creds for the initial ECR pull; runs locally after that.
   Uses the `entry_point` + `source_dir` flow, so edits to `train.py` don't
   require any rebuild.
@@ -50,14 +50,14 @@ prep/prepare_sonar.py       writes data/sonar.csv + Feast parquets + lineage.jso
 prepare.py             plugin-aware prep dispatcher (`--plugin housing` etc.)
 prep/prepare_movielens.py   fetches MovieLens-100K for the ALS recommender path
 prep/prepare_bigquery.py    materializes a BigQuery query to parquet + lineage.json
-demo_categorical.py    runnable demo of "new enum value at inference" bug + 3 fixes
+tools/demo_categorical.py    runnable demo of "new enum value at inference" bug + 3 fixes
 agent.py               autoresearch-style agent loop — edits a plugin iteratively
 program.md             agent prompt for the classification baseline (sonar)
 program_regression.md  agent prompt for the regression baseline (housing)
 program_template.md    starter template for a per-dataset agent program
-local_train.py         BYOC driver — uses the local image, no AWS account
-local_train_dlc.py     DLC driver  — uses the AWS scikit-learn DLC image
-local_train_feast_dlc.py DLC + Feast — host-side feature retrieval, container trains
+drivers/local_train.py         BYOC driver — uses the local image, no AWS account
+drivers/local_train_dlc.py     DLC driver  — uses the AWS scikit-learn DLC image
+drivers/local_train_feast_dlc.py DLC + Feast — host-side feature retrieval, container trains
 pipeline.py            production SageMaker Pipeline sketch (cloud, untested)
 evaluate.py            score a bundle against a holdout, write metrics.json
 deploy_endpoint.py     production endpoint deploy from a registered ModelPackage
@@ -134,7 +134,7 @@ needed to swap datasets, as long as the CSV has a `target` column.
 ### BYOC (offline)
 
 ```bash
-make train-byoc     # builds the image if needed, runs local_train.py
+make train-byoc     # builds the image if needed, runs drivers/local_train.py
 ```
 
 ### DLC (with AWS credentials)
@@ -178,19 +178,19 @@ flowchart LR
   CSV[data/sonar.csv]
   PQ[(feature_repo/<br/>parquets)]
 
-  subgraph byoc_path["BYOC &nbsp;<i>local_train.py</i>"]
+  subgraph byoc_path["BYOC &nbsp;<i>drivers/local_train.py</i>"]
     direction TB
     BD[local Docker image<br/>sage-baker-sklearn]
     BC["container<br/>train.py reads CSV/parquet<br/>writes /opt/ml/model"]
   end
 
-  subgraph dlc_path["DLC &nbsp;<i>local_train_dlc.py</i>"]
+  subgraph dlc_path["DLC &nbsp;<i>drivers/local_train_dlc.py</i>"]
     direction TB
     DD[AWS DLC pulled from ECR]
     DC["container<br/>SKLearn entry_point runs<br/>src/train.py"]
   end
 
-  subgraph feast_path["DLC + Feast &nbsp;<i>local_train_feast_dlc.py</i>"]
+  subgraph feast_path["DLC + Feast &nbsp;<i>drivers/local_train_feast_dlc.py</i>"]
     direction TB
     FH[host: Feast<br/>get_historical_features]
     MAT[materialized.parquet]
@@ -562,7 +562,7 @@ deprecated as of MLflow 3 — use SQLite even for trivial local use):
 # terminal 2: train
 export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
 .venv/bin/python src/train_torch.py --train ./data --model-dir ./models/torch
-.venv/bin/python local_train.py     # BYOC — see "Inside docker" below
+.venv/bin/python drivers/local_train.py     # BYOC — see "Inside docker" below
 
 # browse runs in the UI
 open http://127.0.0.1:5000
@@ -579,7 +579,7 @@ What gets logged:
 
 ### Inside docker (BYOC / DLC)
 
-The drivers (`local_train.py`, `local_train_dlc.py`) automatically pass
+The drivers (`drivers/local_train.py`, `drivers/local_train_dlc.py`) automatically pass
 `MLFLOW_TRACKING_URI` through to the container if it's set on the host,
 rewriting `localhost` / `127.0.0.1` to `host.docker.internal` so the
 container can reach the host. This works out of the box on Mac and
@@ -778,7 +778,7 @@ inference path inherits the same null semantics.
 
 ### Feast on the DLC path
 
-`local_train_feast_dlc.py` ties Feast and the DLC together using the
+`drivers/local_train_feast_dlc.py` ties Feast and the DLC together using the
 **pre-fetch pattern**: Feast retrieval happens on the host, the joined
 dataframe is materialized to a parquet, and *that* parquet is what the
 DLC training container consumes via the standard SageMaker train
@@ -786,7 +786,7 @@ channel. The container has no Feast install — it just reads parquet,
 trains, saves the bundle.
 
 ```bash
-.venv/bin/python local_train_feast_dlc.py
+.venv/bin/python drivers/local_train_feast_dlc.py
 ```
 
 This is the pattern that translates to a real SageMaker Pipeline: a
@@ -1013,7 +1013,7 @@ safari}`, deployed; six months later "Edge 127" hits 5% of traffic and
 everything explodes. **A feature store does not help here** — this is
 a model/encoding choice.
 
-`demo_categorical.py` runs three responses to this bug end-to-end:
+`tools/demo_categorical.py` runs three responses to this bug end-to-end:
 
 ```
 trained on browsers: ['chrome', 'firefox', 'safari']
@@ -1105,7 +1105,7 @@ Concrete steps:
    artifacts, and registers a model version. Iterate from there.
 5. **Promote and deploy.** Promote registered versions through
    MLflow's stage transitions (Staging → Production). Deploy to
-   SageMaker via the `local_train_dlc.py` / `local_train_feast_dlc.py`
+   SageMaker via the `drivers/local_train_dlc.py` / `drivers/local_train_feast_dlc.py`
    drivers (or your work's equivalent), pulling the model_uri from
    MLflow's registry.
 
@@ -1411,7 +1411,7 @@ flowchart LR
 
 | Local | Production |
 | ----- | ---------- |
-| `local_train.py` (host SDK call) | **SageMaker Pipeline** — see `pipeline.py` in this repo. Orchestrates ProcessingStep → TrainingStep → EvalStep → RegisterModel. |
+| `drivers/local_train.py` (host SDK call) | **SageMaker Pipeline** — see `pipeline.py` in this repo. Orchestrates ProcessingStep → TrainingStep → EvalStep → RegisterModel. |
 | `data/sonar.csv` mounted via `file://` | **S3** as the training channel: `estimator.fit({"train": "s3://bucket/training/<run-id>/"})`. |
 | `prep/prepare_bigquery.py` on host | **SageMaker Processing job** running the same script. Inputs from BQ (or upstream S3), outputs to S3. Captures `lineage.json` as a sidecar. |
 | Feast: SQLite + parquet on disk | Feast: **Postgres on RDS** (online + registry) + **S3** (offline parquet). One config file change in `feature_store.yaml`. |
@@ -1421,7 +1421,7 @@ flowchart LR
 
 DLC images you'd use in production (no custom ECR push needed):
 
-- Training: AWS scikit-learn DLC at `683313688378.dkr.ecr.us-east-1.amazonaws.com/sagemaker-scikit-learn:1.2-1-cpu-py3` — same image `local_train_dlc.py` already pulls.
+- Training: AWS scikit-learn DLC at `683313688378.dkr.ecr.us-east-1.amazonaws.com/sagemaker-scikit-learn:1.2-1-cpu-py3` — same image `drivers/local_train_dlc.py` already pulls.
 - Inference: same DLC family hosts the inference toolkit; SageMaker selects the right tag automatically when you `model.deploy(...)`.
 
 ### Pipeline anatomy
@@ -1546,7 +1546,7 @@ changes.
 
 ## Hyperparameters
 
-`local_train.py` passes `n-estimators` and `max-depth` to the estimator;
+`drivers/local_train.py` passes `n-estimators` and `max-depth` to the estimator;
 SageMaker writes these to `/opt/ml/input/config/hyperparameters.json` inside
 the container. `train.py` reads that file and applies them as `argparse`
 defaults. SageMaker stringifies all hyperparameters, so cast to the type you
@@ -1561,11 +1561,11 @@ framework or environment.
   Local Mode lands in v3 (or it stays gone — TBD).
 - **Snap-installed Docker is confined.** It can't bind-mount paths under
   `/tmp`, which is where the SDK normally drops its `docker-compose.yaml` and
-  per-job scratch dirs. `local_train.py` works around this by setting
+  per-job scratch dirs. `drivers/local_train.py` works around this by setting
   `TMPDIR` and `local.container_root` to `.sm-scratch/` under the project.
   If your Docker is from `docker.io` / `docker-ce` (apt) you can drop that.
 - **Real AWS credentials are NOT required for BYOC**, but boto3 still needs
-  *something* in its credential chain plus a region — `local_train.py` sets
+  *something* in its credential chain plus a region — `drivers/local_train.py` sets
   dummy values via env vars before constructing `LocalSession`.
 - **`role=` is ignored in Local Mode** but the SDK still validates it as a
   string. Any ARN-shaped string works.
@@ -1581,7 +1581,7 @@ To swap in your own training:
    - reads from `args.train` (a directory of input files)
    - writes a model file to `args.model_dir`
 2. Update `Dockerfile` deps if you need PyTorch / TF / etc.
-3. Update `local_train.py` hyperparameters and the `inputs={...}` dict passed
+3. Update `drivers/local_train.py` hyperparameters and the `inputs={...}` dict passed
    to `fit()` (one key per channel).
 
 For larger projects you probably want `entry_point` + `source_dir` so you can

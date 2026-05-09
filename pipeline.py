@@ -1,6 +1,6 @@
 """SageMaker Pipeline — production training equivalent of `make train`.
 
-This is the cloud counterpart to local_train_dlc.py + local_train_feast_dlc.py.
+This is the cloud counterpart to drivers/local_train_dlc.py + drivers/local_train_feast_dlc.py.
 Each step runs in a managed SageMaker container; the same `src/train.py`
 runs unchanged inside the TrainingStep — only the channel URIs change
 (S3 instead of `file://`).
