@@ -336,7 +336,7 @@ def main():
     # actually trains. (Real bug we hit: agent on housing.py kept showing
     # sonar metrics because `make train` always uses DefaultPlugin.)
     plugin_name = Path(args.plugin).stem
-    model_dir = f"./model_{plugin_name}"
+    model_dir = f"./models/{plugin_name}"
     train_cmd = [
         sys.executable, "src/train.py",
         "--train", args.data_dir,

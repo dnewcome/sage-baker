@@ -331,9 +331,9 @@ Alternatives:
   swappable weights format:
   ```bash
   .venv/bin/pip install -r requirements-skops.txt
-  .venv/bin/python src/train.py --train ./data --model-dir ./model_skops \
+  .venv/bin/python src/train.py --train ./data --model-dir ./models/skops \
                                --weights-format skops
-  .venv/bin/python local_serve.py --model-dir ./model_skops   # round-trips
+  .venv/bin/python local_serve.py --model-dir ./models/skops   # round-trips
   ```
   `train.py` dispatches the writer by flag; `model_fn(model_dir)`
   dispatches the reader by the `weights_format` field in `config.json`.
@@ -365,8 +365,8 @@ load time, no version-coupling, no RCE risk. Wired in here as
 
 ```bash
 .venv/bin/pip install -r requirements-lightgbm.txt
-.venv/bin/python src/train_lightgbm.py --train ./data --model-dir ./model_lgb
-.venv/bin/python local_serve.py --model-dir ./model_lgb   # round-trips
+.venv/bin/python src/train_lightgbm.py --train ./data --model-dir ./models/lgb
+.venv/bin/python local_serve.py --model-dir ./models/lgb   # round-trips
 ```
 
 Same bundle envelope as the sklearn path — just `weights_file:
@@ -459,7 +459,7 @@ Either way, MLflow never touches your model class.
 - `src/train_torch.py` — torch example. Trains an MLP, writes the *same*
   bundle layout via `bundle.py`, exposes the *same* `model_fn(model_dir)`
   shape. Weights stored as `model.safetensors`. Run standalone with
-  `python src/train_torch.py --train ./data --model-dir ./model_torch`
+  `python src/train_torch.py --train ./data --model-dir ./models/torch`
   (install deps via `pip install -r requirements-torch.txt` first).
 
 The two trainers prove the point: the `model_fn(model_dir) -> model`
@@ -486,7 +486,7 @@ deprecated as of MLflow 3 — use SQLite even for trivial local use):
 
 # terminal 2: train
 export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
-.venv/bin/python src/train_torch.py --train ./data --model-dir ./model_torch
+.venv/bin/python src/train_torch.py --train ./data --model-dir ./models/torch
 .venv/bin/python local_train.py     # BYOC — see "Inside docker" below
 
 # browse runs in the UI
@@ -547,7 +547,7 @@ The expected loop:
    disposable.
 2. **Commit code.** Once a plugin / scenario / threshold is good enough,
    push the *code* to git. Crucially, do **not** push the local model
-   bundle anywhere (`model_*/` is gitignored on purpose). Local
+   bundle anywhere (`models/` is gitignored on purpose). Local
    artifacts stay local.
 3. **Cloud trains on full data.** Your CI pipeline (or a SageMaker
    training job, or just a beefier box with a service account) checks
@@ -689,7 +689,7 @@ Feast do its job.
 "look up features online by entity ID":
 
 ```bash
-.venv/bin/python local_serve.py --model-dir ./model_feast --signal-ids 0,50,100,200
+.venv/bin/python local_serve.py --model-dir ./models/feast --signal-ids 0,50,100,200
 # → fetches f0..f59 for each signal_id from the SQLite online store,
 #   then predicts. Same model_fn, different feature source.
 ```
@@ -791,8 +791,8 @@ For the model to point back at the data it saw, the bundle needs:
 trained model now answers "what did this train on?":
 
 ```bash
-python src/train.py --train ./data --model-dir ./model_sklearn
-cat model_sklearn/metadata.json | jq .data_lineage
+python src/train.py --train ./data --model-dir ./models/sklearn
+cat models/sklearn/metadata.json | jq .data_lineage
 # {
 #   "source": "url",
 #   "url": "https://...sonar.csv",
@@ -817,7 +817,7 @@ cp .env.example .env                    # then edit GOOGLE_APPLICATION_CREDENTIA
 
 # default query hits a public dataset (iris); edit prepare_bigquery.py for yours
 make data-bigquery
-make train MODEL_DIR=./model_bq
+make train MODEL_DIR=./models/bq
 ```
 
 The Makefile auto-loads `.env` (gitignored) and exports its variables
@@ -834,8 +834,8 @@ sonar dataset as a stand-in:
 make data-sonar          # generate data/sonar.csv locally
 make bq-upload-sonar     # one-time: creates $PROJECT.sage_baker.sonar
 make bq-data-sonar       # materializes the table back via prepare_bigquery.py
-make train MODEL_DIR=./model_bq_sonar
-cat model_bq_sonar/metadata.json | jq .data_lineage
+make train MODEL_DIR=./models/bq_sonar
+cat models/bq_sonar/metadata.json | jq .data_lineage
 ```
 
 The `data_lineage` block now records the BQ query, project, snapshot
@@ -1077,12 +1077,12 @@ import sys; sys.path.insert(0, "src")
 import bundle, train
 
 # load any existing bundle by directory
-model = train.model_fn("./model_sklearn")
+model = train.model_fn("./models/sklearn")
 preds = model.predict(X.head())
 
 # or call the training pipeline directly with overrides
 import importlib; importlib.reload(train)   # picks up edits
-import sys; sys.argv = ["train.py", "--train", "./data", "--model-dir", "./model_nb"]
+import sys; sys.argv = ["train.py", "--train", "./data", "--model-dir", "./models/nb"]
 train.main()
 ```
 
@@ -1247,7 +1247,7 @@ so anything in there stays out of the public repo.
 
 ### After convergence: bootstrap a notebook
 
-When the agent stops finding wins, the bundle in `model_<plugin>/` is
+When the agent stops finding wins, the bundle in `models/<plugin>/` is
 your starting point — but a bundle isn't a deliverable. Open Claude
 Code in this repo and run `/productionize` (or `/productionize <plugin>`
 to target a specific bundle). It uses the
@@ -1527,8 +1527,8 @@ loop verifies against. Testing it locally proves all of them.
 Accepts either a directory or a `.tar.gz`:
 
 ```bash
-.venv/bin/python local_serve.py --model-dir ./model_sklearn
-.venv/bin/python local_serve.py --artifact ./model_sklearn/model.tar.gz
+.venv/bin/python local_serve.py --model-dir ./models/sklearn
+.venv/bin/python local_serve.py --artifact ./models/sklearn/model.tar.gz
 ```
 
 Dispatches on the bundle's `config.json` to handle every flavor:

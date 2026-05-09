@@ -11,7 +11,7 @@ PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 
 # Override on the command line, e.g. `make train MODEL_DIR=./other`
-MODEL_DIR  ?= ./model_sklearn
+MODEL_DIR  ?= ./models/sklearn
 DATA_DIR   ?= ./data
 MLFLOW_URI ?= http://127.0.0.1:5000
 
@@ -111,31 +111,31 @@ train: ## Host-side training (default plugin: RandomForest)
 	$(PY) src/train.py --train $(DATA_DIR) --model-dir $(MODEL_DIR)
 
 train-als: ## Host-side ALS training (run data-als + install-recommender first)
-	$(PY) src/train_recommender.py --train $(DATA_DIR) --model-dir ./model_als --plugin als
+	$(PY) src/train_recommender.py --train $(DATA_DIR) --model-dir ./models/als --plugin als
 
 train-housing: ## Host-side regression on California housing (R² metric)
-	$(PY) src/train.py --train $(DATA_DIR) --model-dir ./model_housing --plugin housing
+	$(PY) src/train.py --train $(DATA_DIR) --model-dir ./models/housing --plugin housing
 
 train-clickstream: ## Host-side conversion classification on a fuzzy_clickstream dataset
-	$(PY) src/train.py --train ./data_fuzzy --model-dir ./model_clickstream --plugin clickstream
+	$(PY) src/train.py --train ./data_fuzzy --model-dir ./models/clickstream --plugin clickstream
 
 train-clickstream-linkage: ## Train record-linkage model on pair-level data (run data-linkage first)
-	$(PY) src/train.py --train ./data_linkage --model-dir ./model_clickstream_linkage --plugin clickstream_linkage
+	$(PY) src/train.py --train ./data_linkage --model-dir ./models/clickstream_linkage --plugin clickstream_linkage
 
 train-search: ## Build a FAISS semantic-search index on the product catalog (run data-products first)
-	$(PY) src/train_retrieval.py --train ./data_products --model-dir ./model_search --plugin product_search
+	$(PY) src/train_retrieval.py --train ./data_products --model-dir ./models/search --plugin product_search
 
 train-product-matcher: ## Train pair-classifier for product matching (run data-matcher-pairs first)
-	$(PY) src/train.py --train ./data_matcher --model-dir ./model_product_matcher --plugin product_matcher
+	$(PY) src/train.py --train ./data_matcher --model-dir ./models/product_matcher --plugin product_matcher
 
 train-torch: ## Host-side torch (MLP) training
-	$(PY) src/train_torch.py --train $(DATA_DIR) --model-dir ./model_torch
+	$(PY) src/train_torch.py --train $(DATA_DIR) --model-dir ./models/torch
 
 train-lightgbm: ## Host-side LightGBM training
-	$(PY) src/train_lightgbm.py --train $(DATA_DIR) --model-dir ./model_lgb
+	$(PY) src/train_lightgbm.py --train $(DATA_DIR) --model-dir ./models/lgb
 
 train-feast: ## Host-side sklearn + Feast (point-in-time historical join)
-	$(PY) src/train_feast.py --feature-repo ./feature_repo --model-dir ./model_feast
+	$(PY) src/train_feast.py --feature-repo ./feature_repo --model-dir ./models/feast
 
 # ---------- training (SageMaker Local Mode) ----------------------------
 
@@ -205,7 +205,7 @@ feast-apply: ## Register Feast entity/view + materialize features online
 # ---------- cleanup -----------------------------------------------------
 
 clean: ## Remove scratch dirs (keeps venv, MLflow data, Feast registry)
-	rm -rf .sm-scratch model_*/ materialized/
+	rm -rf .sm-scratch models/ materialized/
 
 .PHONY: help install install-torch install-lightgbm install-skops install-feast install-bigquery install-recommender install-agent install-jupyter install-all
 .PHONY: data-iris data-sonar data-als data-housing data-movielens data-bigquery bq-upload-sonar bq-data-sonar

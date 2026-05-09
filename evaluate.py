@@ -19,7 +19,7 @@ metrics.json schema:
   }
 
 Local testing:
-  python evaluate.py --model ./model_sklearn --test ./data --output ./eval
+  python evaluate.py --model ./models/sklearn --test ./data --output ./eval
   python evaluate.py --model .sm-scratch/tmp.../compressed_artifacts/model.tar.gz \\
                     --test ./data --output ./eval
 """

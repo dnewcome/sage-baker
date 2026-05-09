@@ -17,7 +17,7 @@ toward SageMaker.
 - `agent.py` — autoresearch loop driving Anthropic API over a plugin.
 - `prepare_*.py` — dataset prep scripts; each writes
   `data/<name>.{csv,parquet}` + `data/lineage.json`.
-- `model_<plugin>/` — bundle output (config.json + metadata.json +
+- `models/<plugin>/` — bundle output (config.json + metadata.json +
   weights). **Gitignored.**
 - `data/`, `mlflow.db`, `mlartifacts/`, `mlruns/`, `materialized/` —
   generated. **Gitignored.**
@@ -25,7 +25,7 @@ toward SageMaker.
 ## Skills available
 
 - `/productionize [<plugin>]` — generate a starter notebook from the
-  best agent run. Reads `model_<plugin>/{config,metadata}.json` and
+  best agent run. Reads `models/<plugin>/{config,metadata}.json` and
   writes `notebooks/<plugin>_productionize.ipynb`. See
   `.claude/skills/productionize/SKILL.md` for the full spec.
 

@@ -73,9 +73,9 @@ and the agent's grep widens to match any `validation_\w+=` line.
 
 ```bash
 make data-housing
-make train MODEL_DIR=./model_housing --plugin housing
-make serve MODEL_DIR=./model_housing
-.venv/bin/python evaluate.py --model ./model_housing --test ./data --output ./eval_housing
+make train MODEL_DIR=./models/housing --plugin housing
+make serve MODEL_DIR=./models/housing
+.venv/bin/python evaluate.py --model ./models/housing --test ./data --output ./eval_housing
 cat ./eval_housing/metrics.json
 ```
 

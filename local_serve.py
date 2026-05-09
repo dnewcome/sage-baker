@@ -5,7 +5,7 @@ returns a model object, you call .predict on it. SageMaker's inference
 container does exactly this internally; so does our MLflow PyFunc
 wrapper. Testing model_fn here = testing all of them.
 
-By default, looks at ./model_sklearn/ (the host-side trainer's output).
+By default, looks at ./models/sklearn/ (the host-side trainer's output).
 Pass `--artifact path/to/model.tar.gz` to test a SageMaker artifact
 instead — but watch out for sklearn version skew between the trainer's
 container and your host venv (this is exactly the pickle-coupling
@@ -89,8 +89,8 @@ def fetch_features_via_feast(cfg, signal_ids):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model-dir", default="./model_sklearn",
-                        help="path to a bundle directory (default: ./model_sklearn)")
+    parser.add_argument("--model-dir", default="./models/sklearn",
+                        help="path to a bundle directory (default: ./models/sklearn)")
     parser.add_argument("--artifact", help="path to model.tar.gz; if set, extracted to a temp dir")
     parser.add_argument("--signal-ids", default="0,50,100,200",
                         help="comma-separated signal_ids for Feast-backed bundles")
@@ -105,7 +105,7 @@ def main():
     else:
         if not os.path.isdir(args.model_dir):
             sys.exit(f"no bundle at {args.model_dir} — run "
-                     f"`python src/train.py --train ./data --model-dir ./model_sklearn` first")
+                     f"`python src/train.py --train ./data --model-dir ./models/sklearn` first")
         model_dir = args.model_dir
 
     print(f"bundle contents: {sorted(os.listdir(model_dir))}")
