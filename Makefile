@@ -83,17 +83,17 @@ data-movielens: ## Fetch MovieLens-100K (~1.7 MB) for the ALS recommender path
 data-simulate: ## Run a simulated scenario: SCENARIO=<name> OUTPUT=<dir>
 	$(PY) prepare_simulate.py --scenario $(SCENARIO) --output $(OUTPUT)
 
-data-fuzzy: ## Generate fuzzy_clickstream scenario into ./data_fuzzy/
-	$(PY) prepare_simulate.py --scenario fuzzy_clickstream --output ./data_fuzzy/
+data-fuzzy: ## Generate fuzzy_clickstream scenario into ./data/fuzzy/
+	$(PY) prepare_simulate.py --scenario fuzzy_clickstream --output ./data/fuzzy/
 
-data-products: ## Generate product_catalog scenario into ./data_products/
-	$(PY) prepare_simulate.py --scenario product_catalog --output ./data_products/
+data-products: ## Generate product_catalog scenario into ./data/products/
+	$(PY) prepare_simulate.py --scenario product_catalog --output ./data/products/
 
-data-linkage: ## Build pair-level dataset from ./data_fuzzy/ for record-linkage training
-	$(PY) prepare_linkage.py --input ./data_fuzzy --output ./data_linkage --n-pairs 20000
+data-linkage: ## Build pair-level dataset from ./data/fuzzy/ for record-linkage training
+	$(PY) prepare_linkage.py --input ./data/fuzzy --output ./data/linkage --n-pairs 20000
 
-data-matcher-pairs: ## Build pair-level dataset from ./data_products/ for product-matching training
-	$(PY) prepare_matcher_pairs.py --input ./data_products --output ./data_matcher --n-pairs 5000
+data-matcher-pairs: ## Build pair-level dataset from ./data/products/ for product-matching training
+	$(PY) prepare_matcher_pairs.py --input ./data/products --output ./data/matcher --n-pairs 5000
 
 data-bigquery: ## Materialize a BigQuery query (default: public iris dataset)
 	$(PY) prepare_bigquery.py
@@ -117,16 +117,16 @@ train-housing: ## Host-side regression on California housing (R² metric)
 	$(PY) src/train.py --train $(DATA_DIR) --model-dir ./models/housing --plugin housing
 
 train-clickstream: ## Host-side conversion classification on a fuzzy_clickstream dataset
-	$(PY) src/train.py --train ./data_fuzzy --model-dir ./models/clickstream --plugin clickstream
+	$(PY) src/train.py --train ./data/fuzzy --model-dir ./models/clickstream --plugin clickstream
 
 train-clickstream-linkage: ## Train record-linkage model on pair-level data (run data-linkage first)
-	$(PY) src/train.py --train ./data_linkage --model-dir ./models/clickstream_linkage --plugin clickstream_linkage
+	$(PY) src/train.py --train ./data/linkage --model-dir ./models/clickstream_linkage --plugin clickstream_linkage
 
 train-search: ## Build a FAISS semantic-search index on the product catalog (run data-products first)
-	$(PY) src/train_retrieval.py --train ./data_products --model-dir ./models/search --plugin product_search
+	$(PY) src/train_retrieval.py --train ./data/products --model-dir ./models/search --plugin product_search
 
 train-product-matcher: ## Train pair-classifier for product matching (run data-matcher-pairs first)
-	$(PY) src/train.py --train ./data_matcher --model-dir ./models/product_matcher --plugin product_matcher
+	$(PY) src/train.py --train ./data/matcher --model-dir ./models/product_matcher --plugin product_matcher
 
 train-torch: ## Host-side torch (MLP) training
 	$(PY) src/train_torch.py --train $(DATA_DIR) --model-dir ./models/torch
@@ -179,11 +179,11 @@ demo-categorical: ## Demo: 'new enum value at inference' bug + 3 fixes
 agent: ## autoresearch-style agent loop — edits src/plugins/default.py iteratively
 	$(PY) agent.py
 
-agent-clickstream: ## autoresearch loop on src/plugins/clickstream.py against ./data_fuzzy/
+agent-clickstream: ## autoresearch loop on src/plugins/clickstream.py against ./data/fuzzy/
 	$(PY) agent.py \
 	    --plugin src/plugins/clickstream.py \
 	    --program program_clickstream.md \
-	    --data-dir ./data_fuzzy
+	    --data-dir ./data/fuzzy
 
 test: ## Run smoke test suite (bundle round-trip, plugin contract, etc.)
 	$(VENV)/bin/pytest tests/ -q

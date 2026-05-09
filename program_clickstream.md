@@ -8,10 +8,10 @@ the **validation_auc** of a binary classifier predicting
 ## Dataset shape
 
 - **Source**: `simulate/scenarios/fuzzy_clickstream` produces
-  `./data_fuzzy/training.parquet` (default 500 users × ~4 sessions ×
+  `./data/fuzzy/training.parquet` (default 500 users × ~4 sessions ×
   ~4 events ≈ 8K rows). Run `make data-fuzzy` to regenerate.
 - **Ground truth** (you must NOT use it as features): the simulator
-  writes `./data_fuzzy/ground_truth.parquet` with `true_user_id`,
+  writes `./data/fuzzy/ground_truth.parquet` with `true_user_id`,
   `true_cohort`, `is_converted_session`. The harness never feeds this
   to your plugin — `train.py` only reads `training.parquet`.
 - **Per-event columns in training.parquet**:

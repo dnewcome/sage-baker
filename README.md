@@ -1225,7 +1225,7 @@ The flow for a new project:
 # 1. Prepare a subset for fast iteration (BQ, CSV, whatever)
 .venv/bin/python prepare_bigquery.py \
     --query "SELECT … FROM proj.ds.tbl LIMIT 50000" \
-    --output ./data_X/training.parquet
+    --output ./data/X/training.parquet
 
 # 2. Drop a private plugin (gitignored)
 cp src/plugins/default.py src/plugins/private/X.py
@@ -1239,7 +1239,7 @@ cp program_template.md private/program_X.md
 .venv/bin/python agent.py \
     --plugin src/plugins/private/X.py \
     --program private/program_X.md \
-    --data-dir ./data_X
+    --data-dir ./data/X
 ```
 
 `src/plugins/private/` and `Makefile.private` are already gitignored,

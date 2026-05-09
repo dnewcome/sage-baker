@@ -6,8 +6,8 @@ evaluation use.
 
 Usage::
 
-    python prepare_simulate.py --scenario fuzzy_clickstream --output ./data_fuzzy/
-    python prepare_simulate.py --scenario fuzzy_clickstream --output ./data_fuzzy/ \\
+    python prepare_simulate.py --scenario fuzzy_clickstream --output ./data/fuzzy/
+    python prepare_simulate.py --scenario fuzzy_clickstream --output ./data/fuzzy/ \\
         --seed 7 --easy-mode
 
 List scenarios::
