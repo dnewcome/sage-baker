@@ -25,9 +25,13 @@ mlruns/
 feature_repo/data/*.parquet
 feature_repo/data/*.db
 
-# Private plugins — company-specific; never in the public repo
+# Private plugins / scenarios — company-specific; never in the public repo
 src/plugins/private/
+simulate/scenarios/private/
 Makefile.private
+
+# Generated simulator output (lots of these as you experiment with seeds)
+data_*/
 
 # Claude Code: ship project skills, hooks, and settings — ignore per-user state
 .claude/*

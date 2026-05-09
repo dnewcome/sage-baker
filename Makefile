@@ -77,6 +77,12 @@ data-housing: ## Prepare California housing (sklearn-bundled, regression)
 data-movielens: ## Fetch MovieLens-100K (~1.7 MB) for the ALS recommender path
 	$(PY) prepare_movielens.py
 
+data-simulate: ## Run a simulated scenario: SCENARIO=<name> OUTPUT=<dir>
+	$(PY) prepare_simulate.py --scenario $(SCENARIO) --output $(OUTPUT)
+
+data-fuzzy: ## Generate fuzzy_clickstream scenario into ./data_fuzzy/
+	$(PY) prepare_simulate.py --scenario fuzzy_clickstream --output ./data_fuzzy/
+
 data-bigquery: ## Materialize a BigQuery query (default: public iris dataset)
 	$(PY) prepare_bigquery.py
 
