@@ -13,6 +13,7 @@ materialized/
 # Jupyter
 .ipynb_checkpoints/
 notebooks/.ipynb_checkpoints/
+Untitled*.ipynb
 
 # Generated data — prepare-* scripts regenerate these.
 # Flat files (iris.csv etc.) and subdir-per-dataset (data/fuzzy/,
@@ -57,3 +58,6 @@ secrets/
 
 # editable-install metadata (pip install -e .)
 *.egg-info/
+
+# Talk drafts — private until shared
+talk/
