@@ -30,10 +30,13 @@ This project supports both:
 Dockerfile             minimal Python + scikit-learn image with a `train` command (BYOC)
 src/bundle.py          generic helpers for the standard model-bundle layout
 src/tracking.py        opt-in MLflow tracking helpers (no-op when unconfigured)
-src/train.py           sklearn training example — bundle layout, model_fn
+src/train.py           generic supervised trainer driving any TrainingPlugin
 src/train_torch.py     torch training example — same bundle layout, safetensors weights
 src/train_lightgbm.py  LightGBM example — pickle-free native text format
 src/train_feast.py     sklearn trainer pulling features via Feast (point-in-time join)
+src/train_recommender.py recommender harness (currently used with the ALS plugin)
+src/plugins/           plugin system: base.py + default.py / housing.py / als.py
+                       (auto-discovers extra files in src/plugins/private/, gitignored)
 feature_repo/          Feast feature definitions (entities.py, features.py, store.yaml)
 prepare_data.py        writes data/iris.csv + lineage.json (toy multiclass dataset)
 prepare_sonar.py       writes data/sonar.csv + Feast parquets + lineage.json
@@ -44,13 +47,15 @@ demo_categorical.py    runnable demo of "new enum value at inference" bug + 3 fi
 agent.py               autoresearch-style agent loop — edits a plugin iteratively
 program.md             agent prompt for the classification baseline (sonar)
 program_regression.md  agent prompt for the regression baseline (housing)
+program_template.md    starter template for a per-dataset agent program
 local_train.py         BYOC driver — uses the local image, no AWS account
 local_train_dlc.py     DLC driver  — uses the AWS scikit-learn DLC image
 local_train_feast_dlc.py DLC + Feast — host-side feature retrieval, container trains
 pipeline.py            production SageMaker Pipeline sketch (cloud, untested)
 evaluate.py            score a bundle against a holdout, write metrics.json
 deploy_endpoint.py     production endpoint deploy from a registered ModelPackage
-local_serve.py         placeholder — does not work yet (see "Serving", below)
+local_serve.py         host-side inference test — extracts a bundle, calls model_fn,
+                       dispatches on framework + task, supports Feast online lookup
 requirements.txt       sagemaker<3, boto3, mlflow, scikit-learn, pandas, docker
 requirements-torch.txt opt-in extras for the torch example: torch, safetensors
 requirements-lightgbm.txt opt-in extras for the LightGBM example: lightgbm
@@ -1042,49 +1047,135 @@ SageMaker.
 `agent.py` is a small autonomous loop, inspired by
 [karpathy/autoresearch](https://github.com/karpathy/autoresearch),
 that iteratively improves a plugin by editing it with an LLM, running
-training, and keeping changes that improve `validation_accuracy`.
+training, and keeping changes that improve the validation metric
+(`validation_auc` / `validation_r2` / `validation_accuracy` —
+whichever the plugin emits).
 
 ```mermaid
 flowchart LR
   PROG[program.md<br/><i>human-edited prompt</i>]
+  BASE["baseline run<br/>(unmodified plugin)"]
   AGENT[agent.py<br/>+ Claude]
-  PLUGIN[src/plugins/default.py<br/><i>agent-edited</i>]
-  TRAIN[make train]
+  PLUGIN[src/plugins/X.py<br/><i>agent-edited</i>]
+  TRAIN["python src/train.py --plugin X"]
   REVERT[git checkout --]
 
   PROG --> AGENT
+  BASE -->|"establishes 'best'"| AGENT
   AGENT -->|propose new file| PLUGIN
   PLUGIN --> TRAIN
-  TRAIN -->|metric > best?| AGENT
-  AGENT -->|if worse| REVERT --> PLUGIN
+  TRAIN -->|"metric > best?<br/>(also: stderr if failed)"| AGENT
+  AGENT -->|"if worse / broken"| REVERT --> PLUGIN
 ```
 
 The structure mirrors autoresearch's three files (`prepare.py` /
 `train.py` / `program.md`) but built on top of this repo's plugin
-system, so the agent edits a small focused file (`src/plugins/default.py`)
+system, so the agent edits a small focused file (`src/plugins/X.py`)
 rather than the whole trainer. Cheap iteration on small data is what
-makes this practical — sub-second training on sonar means an overnight
-run can do hundreds of experiments.
+makes this practical — sub-second training on sonar means an
+overnight run can do hundreds of experiments.
+
+### Quick start
 
 ```bash
 make install-agent          # one-time: pip install anthropic
-make data-sonar             # one-time: prepare data
+make data-sonar             # prepare a supervised dataset
 echo 'ANTHROPIC_API_KEY=sk-ant-...' >> .env
 
-make agent                                   # default: 20 iters, 30 min budget
+make agent                                   # default plugin, 20 iters, 30 min budget
 .venv/bin/python agent.py --max-iterations 5    # short test run
-.venv/bin/python agent.py --plugin src/plugins/some_other_plugin.py
+
+# regression (housing dataset + housing plugin + regression program)
+make data-housing
+.venv/bin/python agent.py \
+    --plugin src/plugins/housing.py \
+    --program program_regression.md
 ```
 
-Constraints + strategy hints live in `program.md` — edit that, not
-the agent code, to change what the agent's allowed to do or how it
-should approach the problem. The agent reverts proposals that fail
-syntax check, training failure, or a worse metric — so by design the
-working tree only ever moves forward in metric.
+### Flags
+
+| Flag | Default | Purpose |
+| ---- | ------- | ------- |
+| `--plugin <path>` | `src/plugins/default.py` | which plugin file the agent edits (and trains via `python src/train.py --plugin <name>`) |
+| `--program <path>` | `program.md` | the constraints + strategy prompt (edit `program.md` / `program_regression.md` / `program_template.md`) |
+| `--data-dir <dir>` | `data` | where the trainer reads CSV/parquet from — useful for running parallel agents against different datasets |
+| `--max-iterations N` | `20` | hard cap on iterations |
+| `--budget-seconds N` | `1800` | wall-clock cap (default 30 min) |
+| `--metric NAME` | auto | usually leave unset — the agent matches any `validation_<name>=` line |
+| `--diversify` | off | track sklearn estimator classes already tried, ask the LLM to prefer un-tried classes (default off; the stuck signal already nudges diversity reactively) |
+
+### What makes it actually work
+
+Five safety / signal features that compose so the loop converges
+instead of churning:
+
+1. **Baseline run.** Before the LLM is involved, `agent.py` runs the
+   unmodified plugin once. Failure means the data/plugin pair is
+   incompatible (often: wrong dataset prepared) — exits with an
+   actionable message instead of burning iterations on a broken
+   contract. Success seeds `best` so a proposal must beat the
+   baseline to be kept (was previously `-inf`, meaning the first
+   non-failing iteration always won regardless of quality).
+2. **Failure feedback.** Each iteration's history line carries a
+   `why_reverted` string (syntax error, byte-identical no-op,
+   training stderr tail, missing metric line, "didn't beat best").
+   The LLM sees the failure reasons in the next iteration's prompt
+   and adjusts — closes the error loop instead of repeating the same
+   trap.
+3. **Byte-identity guard.** If the LLM returns the same plugin source
+   unchanged (it sometimes does), the agent skips training and
+   counts it as a no-op iteration. Cheap detection of "you didn't
+   actually change anything."
+4. **Stuck signal.** Counter for iterations since last improvement;
+   resets on KEEP. After 3+ stuck iterations, an extra constraint
+   appears in the prompt telling the LLM to stop tweaking
+   hyperparameters and try a qualitatively different approach
+   (different model class, different preprocessing pipeline). Helps
+   escape local optima.
+5. **Compact diff per iteration.** A unified diff of the proposal vs
+   the previous plugin is printed under each iteration header so you
+   can read along while the agent runs. Suppressed for huge rewrites.
+
+### What's logged
+
+Constraints + strategy hints live in `program.md` (or the per-project
+copy from `program_template.md`) — edit that, not the agent code, to
+change what the agent's allowed to do or how it should approach the
+problem.
 
 If `MLFLOW_TRACKING_URI` is set, every run is also logged to MLflow
-(via the trainer's existing `tracking.py`), so you wake up to a
-searchable history of experiments alongside the final improved plugin.
+via the trainer's existing `tracking.py`, so you wake up to a
+searchable history of experiments alongside the final improved
+plugin. Ctrl-C exits cleanly to a summary instead of dumping a
+traceback.
+
+### For your own dataset
+
+The flow for a new project:
+
+```bash
+# 1. Prepare a subset for fast iteration (BQ, CSV, whatever)
+.venv/bin/python prepare_bigquery.py \
+    --query "SELECT … FROM proj.ds.tbl LIMIT 50000" \
+    --output ./data_X/training.parquet
+
+# 2. Drop a private plugin (gitignored)
+cp src/plugins/default.py src/plugins/private/X.py
+# edit — point at the right target column, set up features
+
+# 3. Drop a per-project program from the template
+cp program_template.md private/program_X.md
+# edit — fill placeholders with your real schema, target, metric, baseline
+
+# 4. Run the agent
+.venv/bin/python agent.py \
+    --plugin src/plugins/private/X.py \
+    --program private/program_X.md \
+    --data-dir ./data_X
+```
+
+`src/plugins/private/` and `Makefile.private` are already gitignored,
+so anything in there stays out of the public repo.
 
 ## Productionizing on SageMaker
 
@@ -1334,21 +1425,42 @@ edit the script without rebuilding the image. That requires installing the
 your script). It's heavier and its install can be finicky on slim Python
 images, which is why this scaffold bakes the script into the image instead.
 
-## Serving (not implemented)
+## Serving
 
-`local_serve.py` is left over from an earlier attempt that used the AWS
-scikit-learn DLC. It will not work against this BYOC image because the image
-has no `serve` command.
+`local_serve.py` exercises the inference contract every deployment
+path uses internally — `model_fn(model_dir) → model.predict(X)`.
+Same function SageMaker's inference container calls; same function
+the MLflow PyFunc wrapper calls; same function the agent's iteration
+loop verifies against. Testing it locally proves all of them.
 
-To add serving, the image needs a `serve` command on `PATH` that starts an
-HTTP server on port 8080 with two routes:
+Accepts either a directory or a `.tar.gz`:
 
-- `GET /ping` → `200` when ready
-- `POST /invocations` → consumes the request body, returns predictions
+```bash
+.venv/bin/python local_serve.py --model-dir ./model_sklearn
+.venv/bin/python local_serve.py --artifact ./model_sklearn/model.tar.gz
+```
 
-Flask + gunicorn is the usual minimal setup. Then `local_serve.py` can use
-`sagemaker.model.Model(image_uri="sage-baker-sklearn:latest", ...)` and
-`.deploy(instance_type="local")` to spin up a local endpoint.
+Dispatches on the bundle's `config.json` to handle every flavor:
+
+- `framework` field → which trainer module's `model_fn` to import
+  (`sklearn → train.model_fn`, `torch → train_torch.model_fn`,
+  `lightgbm → train_lightgbm.model_fn`).
+- `task` field → output style (`classification` shows actual /
+  predicted / matches; `regression` shows actual / predicted /
+  residuals + mean |residual|).
+- `feature_refs` field → if present, the bundle was trained with
+  Feast; pass `--signal-ids 0,50,100,200` and the script looks
+  features up online via the Feast SQLite store before predicting.
+
+The script is also where the framework-version skew warning fires
+(`⚠ sklearn version skew: trained with X, loading with Y`), which
+caught a real DLC-1.2 vs host-1.3 incompatibility during development.
+
+For a production-shape SageMaker endpoint deploy (HTTPS,
+auto-scaling, multi-AZ), see `deploy_endpoint.py` and the
+"Productionizing on SageMaker" section above. For an MLflow
+registry round-trip (`models:/sage-baker-sklearn/1`), see
+`mlflow_serve.py`. All three paths converge on the same `model_fn`.
 
 ## Cleaning up
 
