@@ -1,9 +1,12 @@
 # sagebaker
 
-Local SageMaker training sandbox using **SageMaker Local Mode**, with two
-interchangeable paths: a **bring-your-own-container (BYOC)** image for fully
-offline use, and the **AWS Deep Learning Container (DLC)** image for
-production-parity workflows.
+An **agentic ML iteration sandbox**. An LLM edits a plugin file,
+trains, keeps the change if the metric improves, reverts if not.
+Run it autonomously via `agent.py` (Anthropic API key) or
+interactively inside a Claude Code session. The same plugin code
+that iterates locally ships unchanged to production SageMaker —
+the architecture treats laptop and cloud as two runtime targets
+of the same workflow.
 
 ## What this is
 
@@ -14,9 +17,38 @@ production-parity workflows.
 > scales to production SageMaker. The rest of this README is the
 > architectural reference.
 
-SageMaker has a "Local Mode" where the SDK runs training/inference jobs in
-Docker containers on your machine using the same `/opt/ml/...` directory
-contracts as real SageMaker. By default it pulls Deep Learning Container
+The repo combines four things:
+
+1. **Autoresearch-style agent loop** that iteratively improves an
+   ML plugin — read the program (constraints + strategy hints),
+   ask Claude for a new version, train, keep if better, revert
+   otherwise. Five safety features (baseline run, failure
+   feedback, byte-identity guard, stuck signal, `.agent-keeps`
+   snapshots so wins survive later reverts) make it converge
+   instead of churn. See "Autoresearch-style agent loop" below.
+2. **Pluggable training harness** — framework-agnostic bundle
+   (`config.json` + weights + `metadata.json`); `model_fn(model_dir)`
+   loader every serving path shares; sklearn / torch / lightgbm /
+   FAISS retrieval / implicit-ALS recommender plugins ship out of
+   the box; `src/plugins/private/` is gitignored for work-internal
+   code.
+3. **Synthetic data generators with realistic mess** — clickstream
+   events with anonymous-user defaults, per-session IP/fingerprint
+   drift, cohort-driven conversion lift; multi-retailer product
+   catalogs with sometimes-missing GTINs, member pricing, and stock
+   state. Iterate on real-shape problems without needing real
+   warehouse access.
+4. **Laptop → SageMaker path** — SageMaker Local Mode (BYOC or
+   DLC), MLflow tracking + registry round-trip, MLflow HTTP
+   scoring server with portable threshold logic, plus a SageMaker
+   Pipeline sketch for the cloud trip. Researchers iterate locally,
+   commit code, and cloud CI re-trains against the full data —
+   the plugin code is identical in both places.
+
+The rest of this section explains the SageMaker Local Mode plumbing
+underneath. SageMaker has a "Local Mode" where the SDK runs
+training/inference jobs in Docker containers on your machine using
+the same `/opt/ml/...` directory contracts as real SageMaker. By default it pulls Deep Learning Container
 (DLC) images from a regional ECR registry, which requires real AWS credentials
 (any account works — the images are public-read, but ECR still demands a real
 auth token to issue the pull).
