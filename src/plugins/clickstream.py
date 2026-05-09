@@ -3,6 +3,7 @@
 Enhanced feature engineering with richer behavioral signals extracted
 from pre-decision events only (page_view, click).
 """
+import hashlib
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier, GradientBoostingClassifier
@@ -12,6 +13,16 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 
 from .base import TrainingPlugin
+
+
+def _stable_hash_mod(s, mod):
+    """Deterministic hash → bucket. Python's built-in hash() is randomized
+    per process via PYTHONHASHSEED, so feature values would differ across
+    runs of the same code on the same data — poisoning the agent loop."""
+    if pd.isna(s):
+        return -1
+    digest = hashlib.md5(str(s).encode("utf-8")).hexdigest()
+    return int(digest[:8], 16) % mod
 
 
 _PRE_DECISION_EVENT_TYPES = ("page_view", "click")
@@ -130,13 +141,13 @@ class ClickstreamPlugin(TrainingPlugin):
             device_fp=("device_fingerprint", "first"),
         )
         device_feat["device_bucket_32"] = device_feat["device_fp"].apply(
-            lambda x: hash(str(x)) % 32 if pd.notna(x) else -1
+            lambda x: _stable_hash_mod(x, 32)
         )
         device_feat["device_bucket_64"] = device_feat["device_fp"].apply(
-            lambda x: hash(str(x)) % 64 if pd.notna(x) else -1
+            lambda x: _stable_hash_mod(x, 64)
         )
         device_feat["device_bucket_16"] = device_feat["device_fp"].apply(
-            lambda x: hash(str(x)) % 16 if pd.notna(x) else -1
+            lambda x: _stable_hash_mod(x, 16)
         )
         device_feat = device_feat.drop(columns=["device_fp"])
 

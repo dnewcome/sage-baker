@@ -125,6 +125,19 @@ def prepare(self, df: pd.DataFrame):
   for capacity control instead. If you want to switch estimators
   to one that supports `max_features`, change the import to
   `RandomForestClassifier` or `GradientBoostingClassifier`.
+- **Don't use Python's built-in `hash()` for feature bucketing** —
+  it's randomized per process via `PYTHONHASHSEED`, so the same
+  plugin source on the same data produces different metrics across
+  runs. The agent loop becomes noisy and the keep history is
+  partly meaningless. Use `hashlib.md5(s.encode()).hexdigest()`
+  truncated to an int instead, or `sklearn.feature_extraction.FeatureHasher`.
+  A small helper is fine:
+  ```python
+  import hashlib
+  def stable_hash_mod(s, mod):
+      if pd.isna(s): return -1
+      return int(hashlib.md5(str(s).encode()).hexdigest()[:8], 16) % mod
+  ```
 
 ## Strategy hints
 
