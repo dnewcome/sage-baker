@@ -117,6 +117,14 @@ def prepare(self, df: pd.DataFrame):
 - **Don't return a DataFrame indexed by session_id** without
   resetting the index — `train.py` does `train_test_split(X, y)`
   which expects integer-indexed rows.
+- **Don't pass `max_features` to `HistGradientBoostingClassifier`** —
+  it doesn't accept that argument and will raise `TypeError` at
+  init. `max_features` exists on `RandomForestClassifier` and
+  `GradientBoostingClassifier` (the non-Hist variants); the Hist
+  version uses `max_leaf_nodes` / `max_bins` / `l2_regularization`
+  for capacity control instead. If you want to switch estimators
+  to one that supports `max_features`, change the import to
+  `RandomForestClassifier` or `GradientBoostingClassifier`.
 
 ## Strategy hints
 
