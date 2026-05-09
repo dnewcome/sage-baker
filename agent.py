@@ -187,6 +187,22 @@ def main():
     program = read(args.program)
     client = Anthropic()
 
+    # The --plugin flag is a file path (src/plugins/foo.py); the trainer
+    # wants the bare plugin name ("foo"). Without this, agent.py would
+    # edit foo.py while `make train` keeps running the *default* plugin —
+    # which means the agent's edits have zero effect on what the trainer
+    # actually trains. (Real bug we hit: agent on housing.py kept showing
+    # sonar metrics because `make train` always uses DefaultPlugin.)
+    plugin_name = Path(args.plugin).stem
+    model_dir = f"./model_{plugin_name}"
+    train_cmd = [
+        sys.executable, "src/train.py",
+        "--train", "data",
+        "--model-dir", model_dir,
+        "--plugin", plugin_name,
+    ]
+    print(f"plugin: {plugin_name} | trainer: {' '.join(train_cmd)}")
+
     # ---- baseline run: run the *unmodified* plugin once, before involving
     # the LLM. If this fails, the data/plugin pair is broken and we bail
     # out cleanly with a useful message — no point letting the LLM try to
@@ -195,7 +211,7 @@ def main():
     # actually improve over the unmodified plugin.
     print("===== baseline run (unmodified plugin) =====")
     baseline = subprocess.run(
-        ["make", "train"], capture_output=True, text=True, env=os.environ.copy()
+        train_cmd, capture_output=True, text=True, env=os.environ.copy()
     )
     if baseline.returncode != 0:
         tail = (baseline.stderr or baseline.stdout)[-500:].strip()
@@ -256,7 +272,7 @@ def main():
         print(f"  wrote new plugin (hash={src_hash(proposal)})")
 
         result = subprocess.run(
-            ["make", "train"], capture_output=True, text=True, env=os.environ.copy()
+            train_cmd, capture_output=True, text=True, env=os.environ.copy()
         )
         if result.returncode != 0:
             err_tail = (result.stderr or result.stdout)[-500:].strip()
