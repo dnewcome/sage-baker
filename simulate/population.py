@@ -53,6 +53,7 @@ def make_population(
     rng: random.Random,
     n_users: int = 500,
     identified_fraction: float = 0.0,
+    fingerprint_namespace_factor: float = 2.0,
 ) -> list[User]:
     """Generate a population of n_users with stable identity signals.
 
@@ -65,8 +66,24 @@ def make_population(
     sessions). Default 0.0 means everyone is anonymous — the realistic
     case for most user populations. For identifiable users, the
     per-session login probability is drawn from [0.1, 0.9].
+
+    `fingerprint_namespace_factor` controls device-fingerprint
+    collisions:
+
+      - 2.0 (default): namespace 2× n_users, near-unique fingerprints.
+        Linkage models trivially solve the problem from
+        `same_fingerprint` alone.
+      - 1.0: birthday-problem collisions, ~40% of users share a
+        fingerprint with at least one other.
+      - 0.3: heavy collisions, 3+ users per fingerprint on average.
+        Forces models to combine fingerprint with IP, time, and
+        behavior signals — the realistic record-linkage problem.
+
+    The default keeps the easy regime (so any existing tests / agent
+    runs see unchanged data); dial it down for harder linkage tasks.
     """
     n_buckets = max(1, n_users // 3)
+    fp_namespace = max(2, int(n_users * fingerprint_namespace_factor))
     users = []
     for i in range(n_users):
         cohort = rng.choice(COHORTS)
@@ -74,7 +91,7 @@ def make_population(
         users.append(User(
             user_id=i,
             cohort=cohort,
-            device_fingerprint=f"fp_{rng.randint(0, n_users * 2):08x}",
+            device_fingerprint=f"fp_{rng.randint(0, fp_namespace - 1):08x}",
             ip_bucket=rng.randint(0, n_buckets - 1),
             # Anonymous users never log in; identifiable ones do so at a
             # user-specific rate. Setting base_login_rate=0 here makes

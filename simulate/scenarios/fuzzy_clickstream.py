@@ -69,6 +69,18 @@ class FuzzyClickstreamScenario(Scenario):
         # population can sometimes be logged in, simulating a small
         # logged-in cohort within an otherwise anonymous traffic mix.
         "identified_user_fraction": 0.0,
+        # Device-fingerprint namespace as a multiple of n_users. Default
+        # 2.0 = near-unique fingerprints (easy linkage). Lower values
+        # (e.g. 0.3) force collisions, making record-linkage non-trivial.
+        "fingerprint_namespace_factor": 2.0,
+        # Per-session signal drift. With 0.0 (default), IP and
+        # fingerprint are stable across all sessions of a user — easy
+        # linkage. With 0.3, ~30% of sessions hop to a fresh IP /
+        # fingerprint, simulating users moving between mobile and WiFi
+        # networks or using different devices. This is the lever that
+        # makes record-linkage genuinely hard.
+        "ip_drift_per_session": 0.0,
+        "fingerprint_drift_per_session": 0.0,
         "easy_mode": False,
     }
 
@@ -78,12 +90,24 @@ class FuzzyClickstreamScenario(Scenario):
         identified_fraction = (
             1.0 if p["easy_mode"] else float(p["identified_user_fraction"])
         )
-        users = make_population(rng, p["n_users"], identified_fraction=identified_fraction)
+        users = make_population(
+            rng,
+            p["n_users"],
+            identified_fraction=identified_fraction,
+            fingerprint_namespace_factor=float(p["fingerprint_namespace_factor"]),
+        )
 
         events: list[dict] = []
         ground_truth: list[dict] = []
 
         sim_start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        # We need these here too for per-session signal drift — the user's
+        # primary signals stay; drift draws fresh values from the same pools.
+        n_buckets = max(1, p["n_users"] // 3)
+        fp_namespace = max(2, int(p["n_users"] * float(p["fingerprint_namespace_factor"])))
+        ip_drift = 0.0 if p["easy_mode"] else float(p["ip_drift_per_session"])
+        fp_drift = 0.0 if p["easy_mode"] else float(p["fingerprint_drift_per_session"])
+
         event_id = 0
         session_id = 0
 
@@ -102,6 +126,20 @@ class FuzzyClickstreamScenario(Scenario):
                 logged_in = (
                     True if p["easy_mode"]
                     else rng.random() < user.base_login_rate
+                )
+
+                # Per-session signal drift: with some probability, the user
+                # appears under a different IP bucket and/or device
+                # fingerprint this session (mobile/WiFi/VPN hop, new
+                # device). Otherwise, primary signals.
+                session_ip_bucket = (
+                    rng.randint(0, n_buckets - 1) if rng.random() < ip_drift
+                    else user.ip_bucket
+                )
+                session_fingerprint = (
+                    f"fp_{rng.randint(0, fp_namespace - 1):08x}"
+                    if rng.random() < fp_drift
+                    else user.device_fingerprint
                 )
 
                 # Will this session convert? Cohort propensity * base rate.
@@ -131,8 +169,8 @@ class FuzzyClickstreamScenario(Scenario):
                         "timestamp": ts,
                         "session_id": session_id,
                         "user_id": user.user_id if logged_in else None,
-                        "device_fingerprint": user.device_fingerprint,
-                        "ip_bucket": user.ip_bucket,
+                        "device_fingerprint": session_fingerprint,
+                        "ip_bucket": session_ip_bucket,
                         "event_type": etype,
                         "referrer": rng.choice(REFERRERS),
                         "value": value,

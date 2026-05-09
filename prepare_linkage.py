@@ -50,6 +50,12 @@ def _build_pair_features(a: pd.Series, b: pd.Series) -> dict:
     record-linkage problem is unordered. Non-symmetric features
     (e.g. signed time delta) would let the model learn order from
     sampling artifacts.
+
+    `same_session` is intentionally NOT a feature: in this simulator
+    every session belongs to a single user, so same_session=1 is a
+    deterministic same_user=1, which collapses the problem. Linkage
+    is the cross-session problem; within-session attribution is a
+    different task.
     """
     a_uid = a["user_id"] if pd.notna(a["user_id"]) else None
     b_uid = b["user_id"] if pd.notna(b["user_id"]) else None
@@ -59,7 +65,6 @@ def _build_pair_features(a: pd.Series, b: pd.Series) -> dict:
         "same_ip_bucket": int(a["ip_bucket"] == b["ip_bucket"]),
         "same_referrer": int(a["referrer"] == b["referrer"]),
         "same_event_type": int(a["event_type"] == b["event_type"]),
-        "same_session": int(a["session_id"] == b["session_id"]),
         "both_have_user_id": int(a_uid is not None and b_uid is not None),
         "both_same_user_id": int(
             a_uid is not None and b_uid is not None and a_uid == b_uid
@@ -86,17 +91,32 @@ def main():
     rng = np.random.default_rng(args.seed)
 
     n_half = args.n_pairs // 2
-    user_to_indices = (
-        merged.reset_index().groupby("true_user_id")["index"].apply(list).to_dict()
-    )
-    multi_event_users = [u for u, idxs in user_to_indices.items() if len(idxs) >= 2]
 
-    # Positives: pick a user with ≥2 events, draw two different events.
+    # For positives we need cross-session pairs of the same user — within-
+    # session pairs are trivial since every session belongs to exactly one
+    # user (same_session=1 ⇒ same_user=1). Cross-session is the realistic
+    # linkage problem.
+    user_session_indices: dict[int, dict[int, list[int]]] = {}
+    for idx, row in merged.reset_index().iterrows():
+        user_session_indices.setdefault(row["true_user_id"], {}) \
+            .setdefault(row["session_id"], []).append(int(row["index"]))
+
+    cross_session_users = [
+        u for u, sessions in user_session_indices.items() if len(sessions) >= 2
+    ]
+    if not cross_session_users:
+        raise SystemExit(
+            "no users have events across multiple sessions — "
+            "increase sessions_per_user in the simulator"
+        )
+
     positives = []
     while len(positives) < n_half:
-        u = multi_event_users[rng.integers(0, len(multi_event_users))]
-        idxs = user_to_indices[u]
-        i, j = rng.choice(idxs, size=2, replace=False)
+        u = cross_session_users[rng.integers(0, len(cross_session_users))]
+        sessions = list(user_session_indices[u].keys())
+        s_a, s_b = rng.choice(sessions, size=2, replace=False)
+        i = rng.choice(user_session_indices[u][s_a])
+        j = rng.choice(user_session_indices[u][s_b])
         positives.append((merged.iloc[i], merged.iloc[j]))
 
     # Negatives: random different-user pairs.

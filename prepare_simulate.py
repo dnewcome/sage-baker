@@ -34,6 +34,14 @@ def main():
                         help="fraction of users who can ever be identified "
                              "(default per-scenario; fuzzy_clickstream defaults "
                              "to 0.0 = all anonymous)")
+    parser.add_argument("--fingerprint-namespace-factor", type=float, default=None,
+                        help="device fingerprint namespace as a multiple of n_users. "
+                             "default 2.0 = near-unique (easy linkage); 0.3 = heavy "
+                             "collisions (realistic linkage problem)")
+    parser.add_argument("--ip-drift", type=float, default=None,
+                        help="per-session probability of IP-bucket drift (default 0.0 = stable)")
+    parser.add_argument("--fingerprint-drift", type=float, default=None,
+                        help="per-session probability of fingerprint drift (default 0.0 = stable)")
     parser.add_argument("--easy-mode", action="store_true",
                         help="reduce realism (force everyone identified + "
                              "always logged in; useful for sanity baselines)")
@@ -63,6 +71,12 @@ def main():
     overrides = {"easy_mode": args.easy_mode}
     if args.identified_fraction is not None:
         overrides["identified_user_fraction"] = args.identified_fraction
+    if args.fingerprint_namespace_factor is not None:
+        overrides["fingerprint_namespace_factor"] = args.fingerprint_namespace_factor
+    if args.ip_drift is not None:
+        overrides["ip_drift_per_session"] = args.ip_drift
+    if args.fingerprint_drift is not None:
+        overrides["fingerprint_drift_per_session"] = args.fingerprint_drift
     result = scenario.generate(seed=args.seed, **overrides)
     result.write(args.output)
 
