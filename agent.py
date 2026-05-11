@@ -62,8 +62,14 @@ def write(path, content):
 
 
 def revert(path):
-    """Revert a file to its last committed state via git checkout."""
-    subprocess.run(["git", "checkout", "--", path], check=True)
+    """Revert a file to its last committed state via git checkout.
+
+    When the plugin lives in a different git repo (e.g. sagebaker-plugins),
+    run git from that repo's directory so checkout finds the file.
+    """
+    repo_dir = str(Path(path).resolve().parent)
+    subprocess.run(["git", "checkout", "--", str(Path(path).resolve())],
+                   check=True, cwd=repo_dir)
 
 
 KEEPS_DIR = Path(".agent-keeps")
@@ -336,9 +342,10 @@ def main():
     # actually trains. (Real bug we hit: agent on housing.py kept showing
     # sonar metrics because `make train` always uses DefaultPlugin.)
     plugin_name = Path(args.plugin).stem
-    model_dir = f"./models/{plugin_name}"
+    model_dir = os.environ.get("AGENT_MODEL_DIR", f"./models/{plugin_name}")
+    train_script = os.environ.get("AGENT_TRAIN_SCRIPT", "src/train.py")
     train_cmd = [
-        sys.executable, "src/train.py",
+        sys.executable, train_script,
         "--train", args.data_dir,
         "--model-dir", model_dir,
         "--plugin", plugin_name,
