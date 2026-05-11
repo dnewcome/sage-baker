@@ -29,15 +29,11 @@ Run under gunicorn rather than the Flask dev server:
 """
 import json
 import os
-import sys
 
 from flask import Flask, jsonify, request
 
-# src/ is on the path via editable install; fall back to explicit insert.
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
-
-import bundle  # noqa: E402
-from plugins import get_plugin, get_recommender_plugin  # noqa: E402
+import bundle
+from plugins import get_plugin, get_recommender_plugin
 
 _plugin = None
 _model = None

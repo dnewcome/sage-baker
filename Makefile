@@ -161,7 +161,7 @@ train-feast-dlc: ## SageMaker Local Mode DLC + Feast pre-fetch (needs AWS creds)
 # ---------- inference ---------------------------------------------------
 
 serve: ## Run local_serve.py against $MODEL_DIR
-	$(PY) local_serve.py --model-dir $(MODEL_DIR)
+	$(PY) -m local_serve --model-dir $(MODEL_DIR)
 
 serve-http: ## Single-model HTTP server: PLUGIN_NAME=fillrate MODEL_DIR=models/fillrate make serve-http
 	@$(eval PLUGIN_NAME ?= fillrate)
