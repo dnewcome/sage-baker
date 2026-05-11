@@ -165,7 +165,7 @@ serve: ## Run local_serve.py against $MODEL_DIR
 
 serve-http: ## Single-model HTTP server: PLUGIN_NAME=fillrate MODEL_DIR=models/fillrate make serve-http
 	@$(eval PLUGIN_NAME ?= fillrate)
-	@$(eval MODEL_DIR ?= models/fillrate)
+	@$(eval MODEL_DIR := $(if $(filter command line,$(origin MODEL_DIR)),$(MODEL_DIR),models/$(PLUGIN_NAME)))
 	@$(eval PORT ?= 8080)
 	@echo "serving plugin=$(PLUGIN_NAME) model=$(MODEL_DIR) on port $(PORT)"
 	@echo "POST to http://localhost:$(PORT)/predict"

@@ -28,6 +28,7 @@ requires-python = ">=3.9"
 package-dir = {"" = "src"}
 py-modules = [
     "bundle",
+    "local_serve",
     "serve",
     "tracking",
     "train",
@@ -40,6 +41,7 @@ py-modules = [
 
 [project.scripts]
 sagebaker-serve = "serve:main"
+sagebaker-local-serve = "local_serve:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
