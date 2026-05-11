@@ -63,3 +63,4 @@ secrets/
 talk/
 feature_repo/
 patches/
+.agent-keeps/
