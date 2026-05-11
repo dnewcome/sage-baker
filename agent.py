@@ -272,22 +272,31 @@ No markdown fences, no commentary, no diff format — just the file."""
     return strip_fences(msg.content[0].text)
 
 
-def run_training(train_cmd, env):
-    """Run training, stream output live (prefixed), and return (returncode, stdout).
+def run_training(train_cmd, env, window=5):
+    """Run training, show a rolling window of the last N output lines.
 
-    Merges stderr into stdout so LightGBM progress, warnings, and the
-    validation_<name>=... metric line all appear in order. The prefix
-    '  | ' visually separates trainer output from agent status lines.
+    Uses ANSI cursor-up to overwrite the window in place so the terminal
+    doesn't scroll endlessly. All output is still captured for metric
+    parsing. Merges stderr into stdout so warnings appear in order.
     """
+    from collections import deque
     proc = subprocess.Popen(
         train_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, env=env,
     )
     lines = []
-    for line in proc.stdout:
-        line = line.rstrip("\n")
+    buf = deque(maxlen=window)
+    printed = 0  # lines currently on screen; needed to know how far to move up
+    for raw in proc.stdout:
+        line = raw.rstrip("\n")
         lines.append(line)
-        print(f"  | {line}")
+        buf.append(line)
+        if printed:
+            sys.stdout.write(f"\033[{printed}A")  # move cursor up
+        for dl in buf:
+            sys.stdout.write(f"\r\033[K  | {dl}\n")  # clear line, write, newline
+        printed = len(buf)
+        sys.stdout.flush()
     proc.wait()
     return proc.returncode, "\n".join(lines)
 
