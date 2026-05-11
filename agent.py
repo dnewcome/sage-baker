@@ -77,7 +77,7 @@ def write(path, content):
 def revert(path):
     """Revert a file to its last committed state via git checkout.
 
-    When the plugin lives in a different git repo (e.g. sagebaker-plugins),
+    When the plugin lives in a different git repo (e.g. sagebaker-models),
     run git from that repo's directory so checkout finds the file.
     """
     repo_dir = str(Path(path).resolve().parent)
