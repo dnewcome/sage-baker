@@ -175,7 +175,9 @@ def resolve_model_dir(model_dir: str) -> str:
             return bundle_dir
         try:
             resp = s3.get_object(Bucket=bucket, Key=candidate)
-            _stream_to_file(resp, local_path)
+            tmp_path = local_path + ".tmp"
+            _stream_to_file(resp, tmp_path)
+            os.rename(tmp_path, local_path)  # atomic — no partial files in cache
             with open(os.path.join(bundle_dir, CONFIG_FILE), "w") as f:
                 json.dump({"weights_file": filename}, f)
             return bundle_dir
@@ -206,7 +208,9 @@ def resolve_model_dir(model_dir: str) -> str:
             continue
         os.makedirs(os.path.dirname(local_path), exist_ok=True)
         resp = s3.get_object(Bucket=bucket, Key=obj["Key"])
-        _stream_to_file(resp, local_path)
+        tmp_path = local_path + ".tmp"
+        _stream_to_file(resp, tmp_path)
+        os.rename(tmp_path, local_path)
 
     return bundle_dir
 
