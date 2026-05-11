@@ -37,7 +37,8 @@ def mlflow_run(run_name=None, params=None, tags=None):
     agent_tags = {}
     rationale = os.environ.get("AGENT_RATIONALE")
     if rationale:
-        agent_tags["agent_rationale"] = rationale
+        # "mlflow.note.content" is the key MLflow uses for the run Description field.
+        agent_tags["mlflow.note.content"] = rationale
     merged_tags = {**(tags or {}), **agent_tags}
     with mlflow.start_run(run_name=run_name, tags=merged_tags or None) as run:
         if params:
