@@ -36,6 +36,19 @@ from pathlib import Path
 
 ANTHROPIC_MODEL = "claude-sonnet-4-6"  # cheap-ish, fast, capable enough
 
+# ANSI color helpers — automatically disabled when stdout is not a TTY
+def _ansi(code):
+    return f"\033[{code}m" if sys.stdout.isatty() else ""
+
+RESET  = lambda: _ansi("0")
+BOLD   = lambda: _ansi("1")
+DIM    = lambda: _ansi("2")
+GREEN  = lambda: _ansi("32")
+RED    = lambda: _ansi("31")
+YELLOW = lambda: _ansi("33")
+CYAN   = lambda: _ansi("36")
+PURPLE = lambda: _ansi("35")
+
 
 def load_dotenv(path=".env"):
     """Best-effort .env loader — same shape Make uses (`-include .env`).
@@ -309,12 +322,12 @@ def run_training(train_cmd, env, window=5):
         if is_tty:
             sys.stdout.write(f"\033[{window}A")  # jump to top of reserved area
             for dl in buf:
-                sys.stdout.write(f"\r\033[K  | {dl[:120]}\n")
+                sys.stdout.write(f"\r\033[K{DIM()}  │ {dl[:120]}{RESET()}\n")
             for _ in range(window - len(buf)):
                 sys.stdout.write("\r\033[K\n")   # blank out unused rows
             sys.stdout.flush()
         else:
-            print(f"  | {line}")
+            print(f"{DIM()}  │ {line}{RESET()}")
     proc.wait()
     return proc.returncode, "\n".join(lines)
 
@@ -397,13 +410,13 @@ def main():
         "--model-dir", model_dir,
         "--plugin", plugin_name,
     ]
-    print(f"plugin: {plugin_name} | trainer: {' '.join(train_cmd)}")
+    print(f"{DIM()}plugin: {plugin_name} | trainer: {' '.join(train_cmd)}{RESET()}")
 
     # Per-run keeps dir: each successful proposal is snapshotted here so
     # later reverts can restore the best keep instead of the pre-run
     # baseline. Wiped at start of every run.
     keeps_dir = init_keeps_dir(plugin_name)
-    print(f"keeps dir: {keeps_dir}")
+    print(f"{DIM()}keeps dir: {keeps_dir}{RESET()}")
 
     # ---- baseline run: run the *unmodified* plugin once, before involving
     # the LLM. If this fails, the data/plugin pair is broken and we bail
@@ -411,7 +424,7 @@ def main():
     # fix a bug that isn't its fault. The successful baseline metric
     # becomes `best`, so subsequent proposals only get kept if they
     # actually improve over the unmodified plugin.
-    print("===== baseline run (unmodified plugin) =====")
+    print(f"\n{BOLD()}{CYAN()}━━━ baseline run (unmodified plugin) ━━━{RESET()}")
     baseline_rc, baseline_out = run_training(train_cmd, os.environ.copy())
     if baseline_rc != 0:
         sys.exit(
@@ -427,7 +440,7 @@ def main():
     baseline_metric = parse_metric(baseline_out, args.metric)
     if baseline_metric is None:
         sys.exit("baseline trained but no validation_<name>=… metric in stdout")
-    print(f"baseline metric: {baseline_metric:.4f}")
+    print(f"{BOLD()}baseline metric: {GREEN()}{baseline_metric:.4f}{RESET()}")
 
     start = time.time()
     # history entries: (proposal_source, metric, kept_bool, why_reverted)
@@ -443,12 +456,14 @@ def main():
         for i in range(1, args.max_iterations + 1):
             elapsed = time.time() - start
             if elapsed > args.budget_seconds:
-                print(f"budget exhausted at iteration {i}")
+                print(f"{YELLOW()}budget exhausted at iteration {i}{RESET()}")
                 break
             stuck = (f" stuck={iters_since_improvement}"
                      if iters_since_improvement >= 3 else "")
-            print(f"\n===== iteration {i}  best={best:.4f}  "
-                  f"elapsed={int(elapsed)}s{stuck} =====")
+            print(f"\n{BOLD()}{CYAN()}━━━ iteration {i}{RESET()}"
+                  f"  best={GREEN()}{best:.4f}{RESET()}"
+                  f"  elapsed={DIM()}{int(elapsed)}s{RESET()}"
+                  f"{YELLOW()}{stuck}{RESET()}")
 
             plugin_src = read(args.plugin)
 
@@ -457,12 +472,12 @@ def main():
                                               history, best, iters_since_improvement,
                                               diversify=args.diversify)
             except Exception as e:
-                print(f"  LLM call failed: {e}")
+                print(f"  {RED()}LLM call failed: {e}{RESET()}")
                 history.append(("", -1.0, False, f"LLM call failed: {e}"))
                 iters_since_improvement += 1
                 continue
             if rationale:
-                print(f"  rationale: {rationale}")
+                print(f"  {PURPLE()}rationale:{RESET()} {rationale}")
 
             if not syntax_ok(proposal):
                 why = "proposal failed Python syntax check (ast.parse raised)"
@@ -480,7 +495,7 @@ def main():
                 continue
 
             write(args.plugin, proposal)
-            print(f"  wrote new plugin (hash={src_hash(proposal)})")
+            print(f"  {DIM()}wrote new plugin (hash={src_hash(proposal)}){RESET()}")
             print(show_diff(plugin_src, proposal))
 
             train_env = os.environ.copy()
@@ -490,7 +505,7 @@ def main():
             if result_rc != 0:
                 err_tail = result_out[-500:].strip()
                 why = f"training failed (exit {result_rc}). last stdout:\n{err_tail}"
-                print(f"  training failed (exit {result_rc}); reverting")
+                print(f"  {RED()}training failed (exit {result_rc}); reverting{RESET()}")
                 revert_to_best(args.plugin, keeps_dir)
                 history.append((proposal, -1.0, False, why))
                 iters_since_improvement += 1
@@ -507,7 +522,9 @@ def main():
                 continue
 
             keep = metric > best
-            print(f"  metric={metric:.4f} → {'KEEP' if keep else 'REVERT'}")
+            color = GREEN() if keep else YELLOW()
+            label = "KEEP" if keep else "REVERT"
+            print(f"  metric={BOLD()}{color}{metric:.4f}{RESET()} → {color}{label}{RESET()}")
             if keep:
                 best = metric
                 iters_since_improvement = 0
@@ -521,7 +538,7 @@ def main():
                 history.append((proposal, metric, False, why))
     except KeyboardInterrupt:
         interrupted = True
-        print("\n\n  Ctrl-C — stopping the loop, restoring best keep.")
+        print(f"\n\n  {YELLOW()}Ctrl-C — stopping the loop, restoring best keep.{RESET()}")
 
     # Final restore: ensure the on-disk plugin matches the best metric we
     # tracked. Without this, an interrupted run can leave the file in a
@@ -530,18 +547,19 @@ def main():
 
     kept = sum(1 for entry in history if entry[2])
     header = "interrupted" if interrupted else "done"
-    print(f"\n===== {header} =====")
-    print(f"  iterations: {len(history)} ({kept} kept, {len(history) - kept} reverted)")
+    print(f"\n{BOLD()}{CYAN()}━━━ {header} ━━━{RESET()}")
+    print(f"  iterations: {len(history)} "
+          f"({GREEN()}{kept} kept{RESET()}, {YELLOW()}{len(history) - kept} reverted{RESET()})")
     if best > -float("inf"):
-        print(f"  best metric: {best:.4f}")
+        print(f"  best metric: {BOLD()}{GREEN()}{best:.4f}{RESET()}")
         best_path = best_keep(keeps_dir)
         if best_path is not None:
-            print(f"  restored final plugin from {best_path}")
+            print(f"  {DIM()}restored final plugin from {best_path}{RESET()}")
         else:
-            print(f"  no proposal beat baseline — plugin reverted to git HEAD")
+            print(f"  {DIM()}no proposal beat baseline — plugin reverted to git HEAD{RESET()}")
     else:
-        print("  no successful runs")
-    print(f"  final plugin: {args.plugin}")
+        print(f"  {RED()}no successful runs{RESET()}")
+    print(f"  {DIM()}final plugin: {args.plugin}{RESET()}")
 
 
 if __name__ == "__main__":
