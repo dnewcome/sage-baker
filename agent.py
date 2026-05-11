@@ -264,7 +264,7 @@ def propose(client, program, plugin_path, plugin_src, history, best,
 Output a COMPLETE new version of the plugin file. Plain Python source.
 No markdown fences, no diff format — just the file.
 The FIRST line must be a comment in exactly this format:
-# RATIONALE: <one sentence explaining what you changed and why>
+# RATIONALE: <one sentence explaining what you changed and why>"""
 
     msg = client.messages.create(
         model=ANTHROPIC_MODEL,
