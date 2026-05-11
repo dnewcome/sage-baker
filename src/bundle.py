@@ -93,75 +93,122 @@ def load_lineage(data_dir):
         return json.load(f)
 
 
+def _stream_to_file(s3_response, local_path: str, chunk_size: int = 8 * 1024 * 1024) -> None:
+    """Stream an S3 GetObject response to disk with a stderr progress line."""
+    total = int(s3_response.get("ContentLength", 0))
+    filename = os.path.basename(local_path)
+    done = 0
+    with open(local_path, "wb") as f:
+        for chunk in s3_response["Body"].iter_chunks(chunk_size=chunk_size):
+            f.write(chunk)
+            done += len(chunk)
+            if total:
+                pct = done / total * 100
+                print(
+                    f"\r  {filename}: {done / 1e6:.0f} / {total / 1e6:.0f} MB ({pct:.0f}%)",
+                    end="", flush=True, file=sys.stderr,
+                )
+    if total:
+        print(f"\r  {filename}: {total / 1e6:.0f} MB — done.           ", file=sys.stderr)
+
+
 def resolve_model_dir(model_dir: str) -> str:
     """Resolve ``model_dir`` to a local filesystem path.
 
     If ``model_dir`` is a local path it is returned unchanged.
 
-    If it is an S3 URI (``s3://bucket/prefix``), all objects under that
-    prefix are downloaded to a temporary directory and its path is returned.
-    Two layouts are supported:
+    If it is an S3 URI (``s3://bucket/key``), the model is downloaded and
+    its local directory path is returned.  Two layouts are supported:
 
-    Sage-baker bundle (multiple files at prefix)
-        s3://bucket/models/fillrate/run-20260510/
-        → downloads config.json, model.joblib, metadata.json, …
-
-    Legacy single-file model (production pkl artifact)
+    Single-file model (production pkl artifact) — only ``s3:GetObject`` needed
         s3://bucket/models/cc_product_recommender/v1/model_run-123
         s3://bucket/models/cc_product_recommender/v1/model_run-123.pkl
-        → downloads the single pkl; writes a minimal config.json so
-          load_bundle() can locate the weights file by name.
+        → tries the key as-is, then with .pkl/.joblib appended;
+          writes a minimal config.json so load_bundle() finds the file.
 
-    The temporary directory is created with ``tempfile.mkdtemp`` and
-    lives for the lifetime of the process — no cleanup is performed.
+    Sage-baker bundle (multiple files at a prefix) — requires ``s3:ListBucket``
+        s3://bucket/models/fillrate/run-20260510/
+        → lists the prefix and downloads config.json, model.joblib, etc.
+
+    Caching
+    -------
+    Downloaded files are cached under ``MODEL_CACHE_DIR`` (env var, default
+    ``~/.cache/sage-baker/models``).  The cache key is the S3 URI path so
+    a model is only downloaded once per machine.  Since production artifact
+    filenames include a run ID or timestamp, a new model deployment
+    automatically gets a fresh cache entry — no manual invalidation needed.
+    Set ``MODEL_CACHE_DIR=`` (empty) to disable caching and always use a
+    temporary directory.
     """
     if not model_dir.startswith("s3://"):
         return model_dir
 
     import tempfile
     import boto3
+    from botocore.exceptions import ClientError
 
     without_scheme = model_dir[5:]
-    bucket, _, prefix = without_scheme.partition("/")
+    bucket, _, key = without_scheme.partition("/")
     s3 = boto3.client("s3")
 
-    # List all objects at the prefix (handles bundle case and exact-key case).
+    # --- Resolve cache directory ------------------------------------------
+    cache_root = os.environ.get(
+        "MODEL_CACHE_DIR",
+        os.path.join(os.path.expanduser("~"), ".cache", "sage-baker", "models"),
+    )
+    if cache_root:
+        bundle_dir = os.path.join(cache_root, bucket, key.rstrip("/"))
+        os.makedirs(bundle_dir, exist_ok=True)
+    else:
+        bundle_dir = tempfile.mkdtemp(prefix="sage-baker-bundle-")
+
+    # --- Try direct GetObject first (only s3:GetObject required) ----------
+    # download_file() calls HeadObject internally; get_object() does not.
+    for candidate in [key, key + ".pkl", key + ".joblib"]:
+        filename = os.path.basename(candidate)
+        local_path = os.path.join(bundle_dir, filename)
+        if os.path.exists(local_path):
+            print(f"  {filename}: cached, skipping download.", file=sys.stderr)
+            if not os.path.exists(os.path.join(bundle_dir, CONFIG_FILE)):
+                with open(os.path.join(bundle_dir, CONFIG_FILE), "w") as f:
+                    json.dump({"weights_file": filename}, f)
+            return bundle_dir
+        try:
+            resp = s3.get_object(Bucket=bucket, Key=candidate)
+            _stream_to_file(resp, local_path)
+            with open(os.path.join(bundle_dir, CONFIG_FILE), "w") as f:
+                json.dump({"weights_file": filename}, f)
+            return bundle_dir
+        except ClientError as e:
+            code = e.response["Error"]["Code"]
+            if code not in ("NoSuchKey", "404"):
+                raise  # real permission error — surface immediately
+            continue
+
+    # --- Fall back to prefix listing for multi-file bundles ---------------
     paginator = s3.get_paginator("list_objects_v2")
     objects = []
-    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+    for page in paginator.paginate(Bucket=bucket, Prefix=key.rstrip("/") + "/"):
         objects.extend(page.get("Contents", []))
 
-    # Production models may be referenced without the .pkl extension.
     if not objects:
-        for ext in (".pkl", ".joblib"):
-            resp = s3.list_objects_v2(Bucket=bucket, Prefix=prefix + ext)
-            if resp.get("Contents"):
-                objects = resp["Contents"]
-                break
+        raise FileNotFoundError(
+            f"No S3 objects found at {model_dir} "
+            "(tried direct GetObject and prefix listing)"
+        )
 
-    if not objects:
-        raise FileNotFoundError(f"No S3 objects found at {model_dir}")
-
-    tmp_dir = tempfile.mkdtemp(prefix="sage-baker-bundle-")
-
+    prefix = key.rstrip("/") + "/"
     for obj in objects:
-        key = obj["Key"]
-        # Preserve the relative path within the prefix so bundle/ layouts
-        # land in the right places.  A bare-key object (prefix IS the key)
-        # is saved by its basename.
-        rel = key[len(prefix):].lstrip("/") or os.path.basename(key)
-        local_path = os.path.join(tmp_dir, rel)
+        rel = obj["Key"][len(prefix):] or os.path.basename(obj["Key"])
+        local_path = os.path.join(bundle_dir, rel)
+        if os.path.exists(local_path):
+            print(f"  {rel}: cached, skipping download.", file=sys.stderr)
+            continue
         os.makedirs(os.path.dirname(local_path), exist_ok=True)
-        s3.download_file(bucket, key, local_path)
+        resp = s3.get_object(Bucket=bucket, Key=obj["Key"])
+        _stream_to_file(resp, local_path)
 
-    # Single-file bundle: synthesize a config.json so load_bundle() finds
-    # the weights without knowing the timestamped filename in advance.
-    local_files = os.listdir(tmp_dir)
-    if len(local_files) == 1 and CONFIG_FILE not in local_files:
-        with open(os.path.join(tmp_dir, CONFIG_FILE), "w") as f:
-            json.dump({"weights_file": local_files[0]}, f)
-
-    return tmp_dir
+    return bundle_dir
 
 
 def _git_sha():
