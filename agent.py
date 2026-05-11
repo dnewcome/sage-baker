@@ -384,7 +384,7 @@ def main():
     model_dir = os.environ.get("AGENT_MODEL_DIR", f"./models/{plugin_name}")
     train_script = os.environ.get("AGENT_TRAIN_SCRIPT", "src/train.py")
     train_cmd = [
-        sys.executable, train_script,
+        sys.executable, "-u", train_script,
         "--train", args.data_dir,
         "--model-dir", model_dir,
         "--plugin", plugin_name,
