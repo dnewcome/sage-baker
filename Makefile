@@ -169,7 +169,8 @@ serve-http: ## Single-model HTTP server: PLUGIN_NAME=fillrate MODEL_DIR=models/f
 	@$(eval PORT ?= 8080)
 	@echo "serving plugin=$(PLUGIN_NAME) model=$(MODEL_DIR) on port $(PORT)"
 	@echo "POST to http://localhost:$(PORT)/predict"
-	PLUGIN_NAME=$(PLUGIN_NAME) MODEL_DIR=$(MODEL_DIR) PORT=$(PORT) $(PY) serve.py
+	PLUGIN_NAME=$(PLUGIN_NAME) MODEL_DIR=$(MODEL_DIR) PORT=$(PORT) \
+	  gunicorn -w 1 -t 1 --timeout 120 --bind 0.0.0.0:$(PORT) 'serve:app'
 
 mlflow-serve: ## Load model via MLflow Model Registry
 	MLFLOW_TRACKING_URI=$(MLFLOW_URI) $(PY) mlflow_serve.py
