@@ -61,6 +61,9 @@ install-retrieval: ## Install semantic-search extras (sentence-transformers, fai
 install-agent: ## Install autoresearch-style agent extras (anthropic SDK)
 	$(PIP) install --group agent
 
+install-serve: ## Install HTTP serving extras (flask)
+	$(PIP) install --group serve
+
 install-dev: ## Install dev tooling (pytest)
 	$(PIP) install --group dev
 
@@ -160,6 +163,14 @@ train-feast-dlc: ## SageMaker Local Mode DLC + Feast pre-fetch (needs AWS creds)
 serve: ## Run local_serve.py against $MODEL_DIR
 	$(PY) local_serve.py --model-dir $(MODEL_DIR)
 
+serve-http: ## Single-model HTTP server: PLUGIN_NAME=fillrate MODEL_DIR=models/fillrate make serve-http
+	@$(eval PLUGIN_NAME ?= fillrate)
+	@$(eval MODEL_DIR ?= models/fillrate)
+	@$(eval PORT ?= 8080)
+	@echo "serving plugin=$(PLUGIN_NAME) model=$(MODEL_DIR) on port $(PORT)"
+	@echo "POST to http://localhost:$(PORT)/predict"
+	PLUGIN_NAME=$(PLUGIN_NAME) MODEL_DIR=$(MODEL_DIR) PORT=$(PORT) $(PY) serve.py
+
 mlflow-serve: ## Load model via MLflow Model Registry
 	MLFLOW_TRACKING_URI=$(MLFLOW_URI) $(PY) mlflow_serve.py
 
@@ -211,11 +222,11 @@ feast-apply: ## Register Feast entity/view + materialize features online
 clean: ## Remove scratch dirs (keeps venv, MLflow data, Feast registry)
 	rm -rf .sm-scratch models/ materialized/
 
-.PHONY: help install install-torch install-lightgbm install-skops install-feast install-bigquery install-recommender install-agent install-jupyter install-all
+.PHONY: help install install-torch install-lightgbm install-skops install-feast install-bigquery install-recommender install-agent install-serve install-jupyter install-all
 .PHONY: data-iris data-sonar data-als data-housing data-movielens data-bigquery bq-upload-sonar bq-data-sonar
 .PHONY: train train-als train-housing train-torch train-lightgbm train-feast
 .PHONY: image train-byoc train-dlc train-feast-dlc
-.PHONY: serve mlflow-serve demo-categorical agent
+.PHONY: serve serve-http mlflow-serve demo-categorical agent
 .PHONY: mlflow-server jupyter feast-apply clean
 
 # Private plugin targets (gitignored; company-specific).

@@ -83,6 +83,8 @@ retrieval = ["sentence-transformers>=2.7", "faiss-cpu>=1.8"]
 
 agent = ["anthropic>=0.40"]
 
+serve = ["flask>=3.0"]
+
 dev = ["pytest>=8"]
 
 all = [
@@ -96,5 +98,6 @@ all = [
     {include-group = "recommender"},
     {include-group = "retrieval"},
     {include-group = "agent"},
+    {include-group = "serve"},
     {include-group = "dev"},
 ]

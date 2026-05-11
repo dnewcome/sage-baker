@@ -91,6 +91,37 @@ class TrainingPlugin:
         """
         return {}
 
+    def prepare_inference(self, raw_input: list) -> "pd.DataFrame":
+        """Transform a raw HTTP request payload into model input features.
+
+        ``raw_input`` is a list of dicts — the parsed JSON body from a POST
+        request. Must produce the same column names and dtypes as ``prepare()``
+        produces for X, so the same fitted model can be used for both.
+
+        Raise ``NotImplementedError`` (the default) for plugins that are not
+        yet wired to the serving harness.
+        """
+        raise NotImplementedError(
+            f"Plugin '{self.name}' has no prepare_inference() implementation."
+        )
+
+    def postprocess(self, raw_output, config: dict) -> dict:
+        """Format model output for the HTTP response.
+
+        ``raw_output`` is whatever ``model.predict_proba()`` returns
+        (shape n_samples × n_classes). ``config`` is the bundle's
+        config.json dict — use it for threshold, label maps, etc.
+
+        Default: binary classification with threshold from config.json
+        (key ``prediction_threshold``, default 0.5). Override for
+        recommenders, regression, multi-class output, etc.
+        """
+        import numpy as np
+        threshold = float(config.get("prediction_threshold", 0.5))
+        probs = raw_output[:, 1]
+        predictions = (probs >= threshold).astype(int)
+        return {"predictions": predictions.tolist()}
+
     def prepare_data(self, output_dir: str, seed: int = 42, extra_args: list = None) -> None:
         """Generate synthetic training data into ``output_dir``.
 
