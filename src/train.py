@@ -106,6 +106,7 @@ def main():
     with tracking.mlflow_run(run_name=f"{plugin.name}-train", params=run_params,
                              tags={"framework": type(clf).__module__.split(".")[0],
                                    "plugin": plugin.name}):
+        tracking.log_dataset(path)
         clf.fit(X_train, y_train)
 
         # The plugin owns the metric — accuracy / ROC-AUC for

@@ -53,6 +53,25 @@ def log_metrics(metrics, step=None):
     mlflow.log_metrics(metrics, step=step)
 
 
+def log_dataset(path, context="training"):
+    """Log a dataset to the active MLflow run via mlflow.log_input().
+
+    Reads the file to let MLflow compute a content hash, then registers
+    it so the run's Datasets tab is populated. No-op when tracking is
+    disabled or log_input is unavailable (mlflow < 2.4).
+    """
+    if not _enabled():
+        return
+    try:
+        import mlflow
+        import pandas as pd
+        df = pd.read_parquet(path) if path.endswith(".parquet") else pd.read_csv(path)
+        dataset = mlflow.data.from_pandas(df, source=path, name=os.path.basename(path))
+        mlflow.log_input(dataset, context=context)
+    except Exception:
+        pass  # non-fatal
+
+
 def log_bundle(model_dir, artifact_path="model"):
     """Log the entire bundle dir (config.json + weights + metadata.json)
     as opaque artifacts. Loading happens via your own load(dir), not via
