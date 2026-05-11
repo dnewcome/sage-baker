@@ -57,18 +57,17 @@ _RECOMMENDER_REGISTRY: dict[str, type[RecommenderPlugin]] = {
 }
 
 
-def _discover_private_plugins() -> None:
-    """Auto-load any .py files found in src/plugins/private/."""
-    private_dir = os.path.join(os.path.dirname(__file__), "private")
-    if not os.path.isdir(private_dir):
+def _discover_plugins_in_dir(plugin_dir: str, namespace: str) -> None:
+    """Auto-load any .py files found in plugin_dir into the registries."""
+    if not os.path.isdir(plugin_dir):
         return
-    for entry in sorted(os.listdir(private_dir)):
+    for entry in sorted(os.listdir(plugin_dir)):
         if not entry.endswith(".py") or entry.startswith("_"):
             continue
         module_name = entry[:-3]
         spec = importlib.util.spec_from_file_location(
-            f"plugins.private.{module_name}",
-            os.path.join(private_dir, entry),
+            f"{namespace}.{module_name}",
+            os.path.join(plugin_dir, entry),
         )
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
@@ -79,6 +78,17 @@ def _discover_private_plugins() -> None:
                 _SUPERVISED_REGISTRY[attr.name] = attr
             elif issubclass(attr, RecommenderPlugin) and attr is not RecommenderPlugin:
                 _RECOMMENDER_REGISTRY[attr.name] = attr
+
+
+def _discover_private_plugins() -> None:
+    """Load plugins from src/plugins/private/ and from PLUGIN_DIR env var."""
+    _discover_plugins_in_dir(
+        os.path.join(os.path.dirname(__file__), "private"),
+        "plugins.private",
+    )
+    plugin_dir = os.environ.get("PLUGIN_DIR")
+    if plugin_dir:
+        _discover_plugins_in_dir(os.path.abspath(plugin_dir), "plugins.external")
 
 
 _discover_private_plugins()
