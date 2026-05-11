@@ -272,6 +272,26 @@ No markdown fences, no commentary, no diff format — just the file."""
     return strip_fences(msg.content[0].text)
 
 
+def run_training(train_cmd, env):
+    """Run training, stream output live (prefixed), and return (returncode, stdout).
+
+    Merges stderr into stdout so LightGBM progress, warnings, and the
+    validation_<name>=... metric line all appear in order. The prefix
+    '  | ' visually separates trainer output from agent status lines.
+    """
+    proc = subprocess.Popen(
+        train_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, env=env,
+    )
+    lines = []
+    for line in proc.stdout:
+        line = line.rstrip("\n")
+        lines.append(line)
+        print(f"  | {line}")
+    proc.wait()
+    return proc.returncode, "\n".join(lines)
+
+
 def src_hash(text):
     """Short stable hash for showing to the LLM (de-dup history)."""
     import hashlib
@@ -365,23 +385,19 @@ def main():
     # becomes `best`, so subsequent proposals only get kept if they
     # actually improve over the unmodified plugin.
     print("===== baseline run (unmodified plugin) =====")
-    baseline = subprocess.run(
-        train_cmd, capture_output=True, text=True, env=os.environ.copy()
-    )
-    if baseline.returncode != 0:
-        tail = (baseline.stderr or baseline.stdout)[-500:].strip()
+    baseline_rc, baseline_out = run_training(train_cmd, os.environ.copy())
+    if baseline_rc != 0:
         sys.exit(
             "baseline training failed BEFORE the agent loop started — your "
             "data/plugin pair is incompatible (often: ran `make data-movielens` "
             "then `make agent` which targets the DefaultPlugin expecting a "
             "supervised dataset with a `target` column).\n\n"
-            f"last stderr/stdout:\n{tail}\n\n"
             "fix one of:\n"
             "  • re-prep with a compatible dataset (`make data-sonar`, "
             "`make data-iris`, `make data-housing`)\n"
             "  • point --plugin at one that matches the data\n"
         )
-    baseline_metric = parse_metric(baseline.stdout, args.metric)
+    baseline_metric = parse_metric(baseline_out, args.metric)
     if baseline_metric is None:
         sys.exit("baseline trained but no validation_<name>=… metric in stdout")
     print(f"baseline metric: {baseline_metric:.4f}")
@@ -438,20 +454,17 @@ def main():
             print(f"  wrote new plugin (hash={src_hash(proposal)})")
             print(show_diff(plugin_src, proposal))
 
-            result = subprocess.run(
-                train_cmd, capture_output=True, text=True, env=os.environ.copy()
-            )
-            if result.returncode != 0:
-                err_tail = (result.stderr or result.stdout)[-500:].strip()
-                why = f"training failed (exit {result.returncode}). last stderr/stdout:\n{err_tail}"
-                print(f"  training failed (exit {result.returncode}); reverting")
-                print(f"  last stderr: {err_tail[-300:]}")
+            result_rc, result_out = run_training(train_cmd, os.environ.copy())
+            if result_rc != 0:
+                err_tail = result_out[-500:].strip()
+                why = f"training failed (exit {result_rc}). last stdout:\n{err_tail}"
+                print(f"  training failed (exit {result_rc}); reverting")
                 revert_to_best(args.plugin, keeps_dir)
                 history.append((proposal, -1.0, False, why))
                 iters_since_improvement += 1
                 continue
 
-            metric = parse_metric(result.stdout, args.metric)
+            metric = parse_metric(result_out, args.metric)
             if metric is None:
                 why = (f"training succeeded but no validation_<name>=… line in stdout "
                        f"(expected pattern '{args.metric or 'validation_<anything>'}')")

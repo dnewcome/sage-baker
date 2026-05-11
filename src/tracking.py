@@ -49,8 +49,13 @@ def log_metrics(metrics, step=None):
 def log_bundle(model_dir, artifact_path="model"):
     """Log the entire bundle dir (config.json + weights + metadata.json)
     as opaque artifacts. Loading happens via your own load(dir), not via
-    mlflow.X.load_model — so MLflow never pickles your class."""
+    mlflow.X.load_model — so MLflow never pickles your class.
+
+    Set MLFLOW_LOG_ARTIFACTS=0 to skip artifact upload while keeping
+    run tracking active (useful for fast agent search loops)."""
     if not _enabled():
+        return
+    if os.environ.get("MLFLOW_LOG_ARTIFACTS", "1") == "0":
         return
     import mlflow
     mlflow.log_artifacts(model_dir, artifact_path=artifact_path)
